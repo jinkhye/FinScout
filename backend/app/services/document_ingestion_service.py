@@ -5,8 +5,6 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fastapi import UploadFile
-
 from ..core.config import Settings
 from ..schemas.document import DocumentProcessResponse, PageOutput
 from .auditor_extraction import (
@@ -26,7 +24,6 @@ from .ingestion_pipeline import (
     pages_to_target_pages,
     write_json_payload,
 )
-from .page_classification import validate_classified_pages
 from .table_processing import (
     extract_table_blocks,
     inject_table_summaries,
@@ -39,19 +36,16 @@ class DocumentIngestionService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
-    async def process_upload(
+    async def process_file(
         self,
-        upload: UploadFile,
-        classified_pages_raw: Any,
+        file_path: str,
+        classified_pages: Dict[str, List[int]],
     ) -> DocumentProcessResponse:
-        saved_path = await self._save_upload(upload)
-        pdf_name = saved_path.name
-
         try:
-            classified_pages = validate_classified_pages(classified_pages_raw)
             if not classified_pages:
                 raise ValueError("classified_pages cannot be empty")
 
+            saved_path = self._resolve_pdf_path(file_path)
             pages, auditor_payload = await asyncio.to_thread(
                 self._run_pipeline, saved_path, classified_pages
             )
@@ -68,20 +62,24 @@ class DocumentIngestionService:
             )
         except Exception as exc:
             return DocumentProcessResponse(
-                file_path=str(saved_path),
-                pdf=pdf_name,
+                file_path=file_path,
+                pdf=Path(file_path).name,
                 status="error",
                 error=str(exc),
                 errors=[str(exc)],
             )
 
-    async def _save_upload(self, upload: UploadFile) -> Path:
-        self._settings.uploads_dir.mkdir(parents=True, exist_ok=True)
+    def _resolve_pdf_path(self, file_path: str) -> Path:
+        candidate = Path(file_path)
+        if not candidate.is_absolute():
+            candidate = self._settings.repository_root / candidate
+        candidate = candidate.resolve()
 
-        filename = Path(upload.filename or "uploaded.pdf").name
-        destination = self._settings.uploads_dir / filename
-        destination.write_bytes(await upload.read())
-        return destination
+        if not candidate.exists():
+            raise FileNotFoundError(f"PDF file not found: {candidate}")
+        if not candidate.is_file():
+            raise ValueError(f"PDF path must point to a file: {candidate}")
+        return candidate
 
     def _run_pipeline(
         self,
