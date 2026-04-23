@@ -12,7 +12,6 @@ class Settings:
     repository_root: Path
     backend_root: Path
     cases_dir: Path
-    debug_dir: Path
     uploads_dir: Path
     pipeline_dir: Path
     pipeline_config_path: Path
@@ -26,7 +25,6 @@ class Settings:
     gemini_model: str = "gemini-3.1-flash-lite-preview"
     gemini_max_retries: int = 10
     gemini_retry_delay_sec: float = 1.0
-    debug_pages_per_file: int = 5
 
 
 def _resolve_path(root: Path, raw_value: Any, default: Path) -> Path:
@@ -61,7 +59,6 @@ def get_settings() -> Settings:
     storage_config = pipeline_config.get("storage", {})
     llamaparse_config = pipeline_config.get("llamaparse", {})
     gemini_config = pipeline_config.get("gemini", {})
-    output_config = pipeline_config.get("output", {})
 
     if not isinstance(storage_config, dict):
         storage_config = {}
@@ -69,18 +66,11 @@ def get_settings() -> Settings:
         llamaparse_config = {}
     if not isinstance(gemini_config, dict):
         gemini_config = {}
-    if not isinstance(output_config, dict):
-        output_config = {}
 
     return Settings(
         repository_root=repository_root,
         backend_root=backend_root,
         cases_dir=repository_root / "cases",
-        debug_dir=_resolve_path(
-            repository_root,
-            storage_config.get("debug_dir"),
-            repository_root / "debug",
-        ),
         uploads_dir=_resolve_path(
             repository_root,
             storage_config.get("uploads_dir"),
@@ -101,5 +91,4 @@ def get_settings() -> Settings:
         gemini_model=str(gemini_config.get("model", "gemini-3.1-flash-lite-preview")),
         gemini_max_retries=int(gemini_config.get("max_retries", 10)),
         gemini_retry_delay_sec=float(gemini_config.get("retry_delay_sec", 1.0)),
-        debug_pages_per_file=int(output_config.get("debug_pages_per_file", 5)),
     )

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
 from textwrap import dedent
 from typing import Any, Dict, List, Optional
 
@@ -55,13 +54,6 @@ def build_consolidated_auditor_markdown(pages: List[Dict[str, Any]]) -> str:
         parts.append("")
 
     return "\n".join(parts).strip() + "\n"
-
-
-def write_auditor_debug_input(
-    consolidated_markdown: str, debug_input_md: Path
-) -> None:
-    debug_input_md.parent.mkdir(parents=True, exist_ok=True)
-    debug_input_md.write_text(consolidated_markdown, encoding="utf-8")
 
 
 AUDITOR_PROMPT = dedent(

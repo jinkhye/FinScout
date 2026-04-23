@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 from google import genai
 
 from ..core.config import Settings
-from .document_artifacts import normalize_classified_pages
 
 
 @dataclass(frozen=True)
@@ -19,26 +18,19 @@ class PipelineArtifacts:
     upload_path: Path
     pipeline_dir: Path
     raw_json: Path
-    parsed_json: Path
     cleaned_json: Path
     auditor_json: Path
-    debug_dir: Path
-    debug_input_md: Path
 
 
 def build_pipeline_artifacts(settings: Settings, pdf_name: str) -> PipelineArtifacts:
     pdf_stem = Path(pdf_name).stem or pdf_name
     pipeline_dir = settings.pipeline_dir / pdf_stem
-    debug_dir = pipeline_dir / "debug"
     return PipelineArtifacts(
         upload_path=settings.uploads_dir / pdf_name,
         pipeline_dir=pipeline_dir,
         raw_json=pipeline_dir / "raw_pages.json",
-        parsed_json=pipeline_dir / "parsed_pages.json",
         cleaned_json=pipeline_dir / "cleaned_pages.json",
         auditor_json=pipeline_dir / "auditor_report.json",
-        debug_dir=debug_dir,
-        debug_input_md=debug_dir / "auditor_report.input.md",
     )
 
 
@@ -48,67 +40,6 @@ def write_json_payload(path: Path, payload: Dict[str, Any]) -> None:
         json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-
-
-def load_json_payload(path: Path) -> Dict[str, Any]:
-    if not path.exists():
-        raise FileNotFoundError(f"JSON payload not found: {path}")
-
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError(f"JSON payload must be an object: {path}")
-    return payload
-
-
-def load_existing_pages(path: Path, expected_pdf: str) -> Dict[int, Dict[str, Any]]:
-    if not path.exists():
-        return {}
-
-    existing = load_json_payload(path)
-    existing_pdf = existing.get("pdf")
-    if existing_pdf not in (None, expected_pdf):
-        raise ValueError(
-            f"Existing output belongs to a different PDF: {existing_pdf!r}"
-        )
-
-    pages_raw = existing.get("pages", [])
-    if not isinstance(pages_raw, list):
-        raise ValueError("Existing output pages field must be a list")
-
-    pages_by_number: Dict[int, Dict[str, Any]] = {}
-    for page in pages_raw:
-        if not isinstance(page, dict):
-            continue
-        page_number = page.get("page_number")
-        if isinstance(page_number, bool) or not isinstance(page_number, int):
-            continue
-        pages_by_number[page_number] = page
-
-    return pages_by_number
-
-
-def load_raw_pages(path: Path) -> Tuple[Dict[str, List[int]], List[Dict[str, Any]]]:
-    payload = load_json_payload(path)
-
-    classified = payload.get("classified_pages")
-    pages = payload.get("pages")
-    if not isinstance(classified, dict):
-        raise ValueError("Raw pages file is missing classified_pages object")
-    if not isinstance(pages, list):
-        raise ValueError("Raw pages file is missing pages list")
-
-    raw_pages: List[Dict[str, Any]] = []
-    for page in pages:
-        if not isinstance(page, dict):
-            continue
-        page_number = page.get("page_number")
-        if isinstance(page_number, bool) or not isinstance(page_number, int):
-            continue
-        raw_pages.append(page)
-
-    raw_pages.sort(key=lambda page: int(page["page_number"]))
-    normalized_classified = normalize_classified_pages(classified)
-    return normalized_classified, raw_pages
 
 
 def build_page_to_section_map(
@@ -127,15 +58,6 @@ def build_page_to_section_map(
     return page_to_section, sorted(
         (page, sections) for page, sections in duplicates.items()
     )
-
-
-def page_numbers_from_classified_pages(
-    classified_pages: Dict[str, List[int]],
-) -> List[int]:
-    page_numbers: List[int] = []
-    for pages in classified_pages.values():
-        page_numbers.extend(pages)
-    return sorted(set(page_numbers))
 
 
 def pages_to_target_pages(pages: List[int]) -> str:
@@ -195,41 +117,3 @@ def get_gemini_client() -> Optional[Any]:
     if not api_key:
         return None
     return genai.Client(api_key=api_key)
-
-
-def write_debug_markdown_chunks(
-    debug_dir: Path,
-    pages: List[Dict[str, Any]],
-    chunk_size: int,
-    raw_key: str,
-    clean_key: str,
-) -> None:
-    if not pages:
-        return
-
-    debug_dir.mkdir(parents=True, exist_ok=True)
-
-    for offset in range(0, len(pages), chunk_size):
-        chunk = pages[offset : offset + chunk_size]
-        start = int(chunk[0]["page_number"])
-        end = int(chunk[-1]["page_number"])
-        file_path = debug_dir / f"page_{start}-{end}.debug.md"
-
-        parts: List[str] = []
-        for page in chunk:
-            page_number = page.get("page_number")
-            section = page.get("section", "unknown")
-            parts.append(f"<!-- Page {page_number} | section={section} -->")
-            parts.append("")
-            parts.append("## RAW")
-            parts.append("")
-            parts.append(page.get(raw_key, ""))
-            parts.append("")
-            parts.append("## CLEAN")
-            parts.append("")
-            parts.append(page.get(clean_key, ""))
-            parts.append("")
-            parts.append("---")
-            parts.append("")
-
-        file_path.write_text("\n".join(parts).strip() + "\n", encoding="utf-8")

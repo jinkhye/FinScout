@@ -38,8 +38,6 @@ class DocumentProcessResponse(BaseModel):
     total_pages_parsed: int = 0
     classified_pages: Dict[str, List[int]] = Field(default_factory=dict)
     pages: List[PageOutput] = Field(default_factory=list)
-    artifact_paths: Dict[str, str] = Field(default_factory=dict)
-    pipeline_stage: str = "unknown"
     status: ProcessingStatus = "error"
     error: str | None = None
     errors: List[str] = Field(default_factory=list)
