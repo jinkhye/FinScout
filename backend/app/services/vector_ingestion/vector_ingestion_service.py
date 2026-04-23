@@ -186,9 +186,6 @@ class VectorIngestionService:
             "pdf_name": processed_payload.get("pdf_name", ""),
             "company_name": processed_payload.get("company_name", "unknown"),
             "year": processed_payload.get("year", "unknown"),
-            "auditor_opinion": processed_payload.get("auditor_opinion", "unknown"),
-            "auditor_firm": processed_payload.get("auditor_firm", "unknown"),
-            "audit_period": processed_payload.get("audit_period", "unknown"),
         }
 
         points: List[PointStruct] = []
