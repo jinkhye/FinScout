@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -26,6 +28,7 @@ class Settings:
 def get_settings() -> Settings:
     repository_root = Path(__file__).resolve().parents[3]
     backend_root = repository_root / "backend"
+    load_dotenv(repository_root / ".env")
 
     return Settings(
         repository_root=repository_root,
