@@ -17,7 +17,6 @@ from .auditor_extraction import (
     load_auditor_pages,
 )
 from .ingestion_pipeline import (
-    PipelineArtifacts,
     build_page_to_section_map,
     build_pipeline_artifacts,
     chunk_pages,
@@ -101,6 +100,7 @@ class DocumentIngestionService:
         logger.info("Pipeline artifact directory: %s", artifacts.pipeline_dir)
 
         if saved_path.resolve() != artifacts.upload_path.resolve():
+            artifacts.upload_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(saved_path, artifacts.upload_path)
             logger.info("Copied PDF to %s", artifacts.upload_path)
 
@@ -121,12 +121,6 @@ class DocumentIngestionService:
             markdown_key="markdown_raw",
             title="Raw LlamaParse Markdown",
         )
-        self._write_pages(
-            artifacts.raw_json,
-            saved_path.name,
-            classified_pages,
-            raw_pages,
-        )
 
         cleaned_pages = self._clean_pages(raw_pages, logger)
         self._log_markdown_pages(
@@ -137,12 +131,6 @@ class DocumentIngestionService:
             title="Cleaned Markdown With Table Summaries",
         )
         logger.info("Cleaned pages: %d", len(cleaned_pages))
-        self._write_pages(
-            artifacts.cleaned_json,
-            saved_path.name,
-            classified_pages,
-            cleaned_pages,
-        )
 
         auditor_payload = self._extract_auditor_payload(
             pdf_name=saved_path.name,
@@ -150,11 +138,18 @@ class DocumentIngestionService:
             cleaned_pages=cleaned_pages,
             logger=logger,
         )
-        write_json_payload(artifacts.auditor_json, auditor_payload)
-        logger.info("Auditor metadata extracted")
 
         pages = [PageOutput.model_validate(page) for page in cleaned_pages]
-        return pages, auditor_payload
+        final_payload = self._build_processed_payload(
+            pdf_name=saved_path.name,
+            classified_pages=classified_pages,
+            pages=cleaned_pages,
+            auditor_payload=auditor_payload,
+        )
+        write_json_payload(artifacts.processed_json, final_payload)
+        logger.info("Processed output written to %s", artifacts.processed_json)
+        logger.info("Auditor metadata extracted")
+        return pages, final_payload
 
     def _page_to_section(
         self, classified_pages: Dict[str, List[int]]
@@ -356,22 +351,26 @@ class DocumentIngestionService:
             },
         )
 
-    def _write_pages(
+    def _build_processed_payload(
         self,
-        path: Path,
+        *,
         pdf_name: str,
         classified_pages: Dict[str, List[int]],
         pages: List[Dict[str, Any]],
-    ) -> None:
-        write_json_payload(
-            path,
-            {
-                "pdf_name": pdf_name,
-                "total_pages_parsed": len(pages),
-                "classified_pages": classified_pages,
-                "pages": pages,
-            },
-        )
+        auditor_payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        return {
+            "pdf_name": pdf_name,
+            "company_name": auditor_payload.get("company_name", "unknown"),
+            "year": auditor_payload.get("year", "unknown"),
+            "auditor_opinion": auditor_payload.get("auditor_opinion", "unknown"),
+            "auditor_firm": auditor_payload.get("auditor_firm", "unknown"),
+            "auditor_name": auditor_payload.get("auditor_name", "unknown"),
+            "audit_period": auditor_payload.get("audit_period", "unknown"),
+            "total_pages_parsed": len(pages),
+            "classified_pages": classified_pages,
+            "pages": pages,
+        }
 
     def _extract_auditor_metadata(
         self,

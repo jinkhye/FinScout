@@ -17,19 +17,16 @@ from ..core.config import Settings
 class PipelineArtifacts:
     upload_path: Path
     pipeline_dir: Path
-    raw_json: Path
-    cleaned_json: Path
-    auditor_json: Path
+    processed_json: Path
 
 
 def build_pipeline_artifacts(settings: Settings, pdf_name: str) -> PipelineArtifacts:
-    output_dir = settings.pipeline_dir / (Path(pdf_name).with_suffix("").name or pdf_name)
+    pdf_slug = Path(pdf_name).with_suffix("").name or pdf_name
+    output_dir = settings.pipeline_dir / pdf_slug
     return PipelineArtifacts(
         upload_path=settings.uploads_dir / pdf_name,
         pipeline_dir=output_dir,
-        raw_json=output_dir / "raw_pages.json",
-        cleaned_json=output_dir / "cleaned_pages.json",
-        auditor_json=output_dir / "auditor_report.json",
+        processed_json=output_dir / f"processed_{pdf_slug}.json",
     )
 
 
