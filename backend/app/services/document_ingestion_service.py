@@ -298,8 +298,12 @@ class DocumentIngestionService:
             self._settings.gemini_model,
             consolidated_markdown,
         )
+        log_json_artifact(
+            logger,
+            "auditor/output.json",
+            auditor_response.model_dump(),
+        )
         auditor_payload = build_auditor_output_payload(source_payload, auditor_response)
-        log_json_artifact(logger, "auditor/output.json", auditor_payload)
         return auditor_payload
 
     def _log_markdown_pages(

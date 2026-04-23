@@ -35,6 +35,11 @@ def create_run_logger(
         )
     )
     logger.addHandler(handler)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(handler.formatter)
+    logger.addHandler(console_handler)
+
     logger.info("Run started: %s", run_dir)
     return logger
 
