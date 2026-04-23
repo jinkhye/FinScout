@@ -9,29 +9,33 @@ from fastapi import UploadFile
 
 from ..core.config import Settings
 from ..schemas.document import DocumentProcessResponse, PageOutput
+from .auditor_extraction import (
+    build_auditor_output_payload,
+    build_consolidated_auditor_markdown,
+    call_auditor_extraction_model,
+    derive_year,
+    load_auditor_pages,
+    write_auditor_debug_input,
+)
 from .document_artifacts import normalize_classified_pages
 from .ingestion_pipeline import (
     PipelineArtifacts,
-    build_auditor_output_payload,
-    build_consolidated_auditor_markdown,
     build_page_to_section_map,
     build_pipeline_artifacts,
-    call_auditor_extraction_model,
     chunk_pages,
     clean_markdown_for_embedding,
-    derive_year,
-    extract_table_blocks,
     get_gemini_client,
-    inject_table_summaries,
-    load_auditor_pages,
     load_existing_pages,
     load_json_payload,
     pages_to_target_pages,
-    replace_table_blocks_with_placeholders,
-    summarize_table_with_gemini,
-    write_debug_input,
     write_debug_markdown_chunks,
     write_json_payload,
+)
+from .table_processing import (
+    extract_table_blocks,
+    inject_table_summaries,
+    replace_table_blocks_with_placeholders,
+    summarize_table_with_gemini,
 )
 
 
@@ -451,7 +455,7 @@ class DocumentIngestionService:
         source_payload = load_json_payload(artifacts.cleaned_json)
         auditor_pages = load_auditor_pages(source_payload)
         consolidated_markdown = build_consolidated_auditor_markdown(auditor_pages)
-        write_debug_input(consolidated_markdown, artifacts.debug_input_md)
+        write_auditor_debug_input(consolidated_markdown, artifacts.debug_input_md)
 
         gemini_client = get_gemini_client()
         if gemini_client is None:
