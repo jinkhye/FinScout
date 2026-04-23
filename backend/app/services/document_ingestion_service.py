@@ -116,19 +116,19 @@ class DocumentIngestionService:
         )
         self._log_markdown_pages(
             logger,
-            "markdown/raw.md",
+            "text/text.md",
             raw_pages,
-            markdown_key="markdown_raw",
-            title="Raw LlamaParse Markdown",
+            text_key="text",
+            title="Raw LlamaParse Text",
         )
 
         cleaned_pages = self._clean_pages(raw_pages, logger)
         self._log_markdown_pages(
             logger,
-            "markdown/cleaned_with_tables.md",
+            "text/text_for_embedding.md",
             cleaned_pages,
-            markdown_key="markdown_clean",
-            title="Cleaned Markdown With Table Summaries",
+            text_key="text_for_embedding",
+            title="Text For Embedding With Table Summaries",
         )
         logger.info("Cleaned pages: %d", len(cleaned_pages))
 
@@ -207,7 +207,7 @@ class DocumentIngestionService:
             {
                 "page_number": page_number,
                 "section": page_to_section[page_number],
-                "markdown_raw": markdown_by_page.get(page_number, ""),
+                "text": markdown_by_page.get(page_number, ""),
             }
             for page_number in pages_to_parse
         ]
@@ -223,11 +223,11 @@ class DocumentIngestionService:
         for raw_page in raw_pages:
             page_number = int(raw_page["page_number"])
             section = str(raw_page.get("section") or "unknown")
-            raw_markdown = str(raw_page.get("markdown_raw") or "")
-            table_blocks = extract_table_blocks(raw_markdown)
+            text = str(raw_page.get("text") or "")
+            table_blocks = extract_table_blocks(text)
 
-            markdown_with_slots = replace_table_blocks_with_placeholders(raw_markdown)
-            markdown_clean = clean_markdown_for_embedding(markdown_with_slots)
+            text_with_slots = replace_table_blocks_with_placeholders(text)
+            text_for_embedding = clean_markdown_for_embedding(text_with_slots)
 
             tables: List[Dict[str, Any]] = []
             summaries: List[str] = []
@@ -269,8 +269,10 @@ class DocumentIngestionService:
                     "section": section,
                     "has_table": bool(table_blocks),
                     "tables": tables,
-                    "markdown_raw": raw_markdown,
-                    "markdown_clean": inject_table_summaries(markdown_clean, summaries),
+                    "text": text,
+                    "text_for_embedding": inject_table_summaries(
+                        text_for_embedding, summaries
+                    ),
                 }
             )
 
@@ -312,7 +314,7 @@ class DocumentIngestionService:
         relative_path: str,
         pages: List[Dict[str, Any]],
         *,
-        markdown_key: str,
+        text_key: str,
         title: str,
     ) -> None:
         parts = [f"# {title}", ""]
@@ -321,7 +323,7 @@ class DocumentIngestionService:
                 f"<!-- page={page.get('page_number')} section={page.get('section', 'unknown')} -->"
             )
             parts.append("")
-            parts.append(str(page.get(markdown_key) or ""))
+            parts.append(str(page.get(text_key) or ""))
             parts.append("")
             parts.append("---")
             parts.append("")

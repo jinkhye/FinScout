@@ -45,7 +45,7 @@ def build_consolidated_auditor_markdown(pages: List[Dict[str, Any]]) -> str:
         section = page.get("section", "auditor_report")
         parts.append(f"<!-- Page {page_number} | section={section} -->")
         parts.append("")
-        parts.append(page.get("markdown_clean", ""))
+        parts.append(page.get("text_for_embedding", ""))
         parts.append("")
         parts.append("---")
         parts.append("")

@@ -115,8 +115,8 @@ class PageOutput(BaseModel):
     section: str = "unknown"
     has_table: bool = False
     tables: List[TableSummary] = Field(default_factory=list)
-    markdown_raw: str = ""
-    markdown_clean: str = ""
+    text: str = ""
+    text_for_embedding: str = ""
 
 
 class DocumentProcessResponse(BaseModel):
