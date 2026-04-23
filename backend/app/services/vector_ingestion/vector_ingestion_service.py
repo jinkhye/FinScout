@@ -27,54 +27,39 @@ class VectorIngestionService:
     ) -> VectorIngestResponse:
         try:
             logger.info("Vector ingestion request for %s", processed_file_path)
-            response = await asyncio.to_thread(
+            return await asyncio.to_thread(
                 self._ingest_processed_file_sync,
                 processed_file_path,
                 logger,
             )
-            return response
         except Exception as exc:
             logger.error("Vector ingestion failed: %s", exc)
-            log_json_artifact(
-                logger,
-                "ingestion_summary.json",
-                {
-                    "processed_file_path": processed_file_path,
-                    "collection_name": "",
-                    "points_inserted": 0,
-                    "status": "error",
-                    "error": str(exc),
-                    "errors": [str(exc)],
-                },
-            )
-            return VectorIngestResponse(
-                status="error",
-                error=str(exc),
-                errors=[str(exc)],
-            )
+            return self._error_response(processed_file_path, exc, logger)
 
     def _ingest_processed_file_sync(
         self,
         processed_file_path: str,
         logger: logging.Logger,
     ) -> VectorIngestResponse:
-        path = self._resolve_processed_path(processed_file_path)
-        processed_payload = self._load_processed_payload(path)
+        path, processed_payload = self._load_processed_payload(processed_file_path)
 
         pdf_name = str(processed_payload.get("pdf_name") or path.stem)
         collection_name = self._build_collection_name(pdf_name)
         logger.info("Resolved processed JSON: %s", path)
         logger.info("Target Qdrant collection: %s", collection_name)
 
-        page_items, skipped_pages = self._build_page_items(processed_payload)
-        if not page_items:
+        pages, skipped_pages = self._pages_to_embed(processed_payload)
+        if not pages:
             raise ValueError("No pages with non-empty text_for_embedding found")
 
         qdrant = self._connect_to_qdrant(logger)
+        gemini_client = get_gemini_client()
+        if gemini_client is None:
+            raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY must be set for embeddings")
 
-        embeddings = self._embed_pages(page_items, logger)
+        embeddings = self._embed_pages(gemini_client, pages, logger)
         vector_size = len(embeddings[0])
-        points = self._build_points(processed_payload, page_items, embeddings)
+        points = self._build_points(processed_payload, pages, embeddings)
 
         self._recreate_collection(qdrant, collection_name, vector_size)
         qdrant.upsert(collection_name=collection_name, points=points)
@@ -100,7 +85,7 @@ class VectorIngestionService:
             errors=[],
         )
 
-    def _resolve_processed_path(self, processed_file_path: str) -> Path:
+    def _load_processed_payload(self, processed_file_path: str) -> tuple[Path, Dict[str, Any]]:
         candidate = Path(processed_file_path)
         if not candidate.is_absolute():
             candidate = self._settings.repository_root / candidate
@@ -110,23 +95,21 @@ class VectorIngestionService:
             raise FileNotFoundError(f"Processed file not found: {candidate}")
         if not candidate.is_file():
             raise ValueError(f"Processed path must point to a file: {candidate}")
-        return candidate
 
-    def _load_processed_payload(self, path: Path) -> Dict[str, Any]:
-        with path.open("r", encoding="utf-8") as file:
+        with candidate.open("r", encoding="utf-8") as file:
             payload = json.load(file)
 
         if not isinstance(payload, dict):
             raise ValueError("Processed file must contain a JSON object")
         if not isinstance(payload.get("pages"), list):
             raise ValueError("Processed file must contain a pages list")
-        return payload
+        return candidate, payload
 
-    def _build_page_items(
+    def _pages_to_embed(
         self,
         processed_payload: Dict[str, Any],
     ) -> tuple[List[Dict[str, Any]], List[int]]:
-        page_items: List[Dict[str, Any]] = []
+        pages: List[Dict[str, Any]] = []
         skipped_pages: List[int] = []
 
         for page in processed_payload.get("pages", []):
@@ -139,22 +122,19 @@ class VectorIngestionService:
                 skipped_pages.append(page_number)
                 continue
 
-            page_items.append(page)
+            pages.append(page)
 
-        return page_items, skipped_pages
+        return pages, skipped_pages
 
     def _embed_pages(
         self,
-        page_items: List[Dict[str, Any]],
+        gemini_client: Any,
+        pages: List[Dict[str, Any]],
         logger: logging.Logger,
     ) -> List[List[float]]:
-        gemini_client = get_gemini_client()
-        if gemini_client is None:
-            raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY must be set for embeddings")
-
         embeddings: List[List[float]] = []
-        total = len(page_items)
-        for index, page in enumerate(page_items, start=1):
+        total = len(pages)
+        for index, page in enumerate(pages, start=1):
             page_number = page.get("page_number", "unknown")
             logger.info("Embedding page %s (%d/%d)", page_number, index, total)
             response = gemini_client.models.embed_content(
@@ -166,14 +146,11 @@ class VectorIngestionService:
         return embeddings
 
     def _document_embedding_text(self, page: Dict[str, Any]) -> str:
-        title = self._document_title(page)
-        content = str(page.get("text_for_embedding") or "")
-        return f"title: {title} | text: {content}"
-
-    def _document_title(self, page: Dict[str, Any]) -> str:
         section = str(page.get("section") or "unknown")
         page_number = page.get("page_number", "unknown")
-        return f"{section} page {page_number}"
+        title = f"{section} page {page_number}"
+        content = str(page.get("text_for_embedding") or "")
+        return f"title: {title} | text: {content}"
 
     def _connect_to_qdrant(self, logger: logging.Logger) -> QdrantClient:
         qdrant = QdrantClient(url=self._settings.qdrant_url)
@@ -194,12 +171,6 @@ class VectorIngestionService:
         embeddings = getattr(response, "embeddings", None)
         if embeddings:
             values = getattr(embeddings[0], "values", None)
-            if values:
-                return [float(value) for value in values]
-
-        embedding = getattr(response, "embedding", None)
-        if embedding is not None:
-            values = getattr(embedding, "values", None)
             if values:
                 return [float(value) for value in values]
 
@@ -275,3 +246,24 @@ class VectorIngestionService:
         if not slug:
             slug = "unknown_report"
         return f"report_{slug}"
+
+    def _error_response(
+        self,
+        processed_file_path: str,
+        exc: Exception,
+        logger: logging.Logger,
+    ) -> VectorIngestResponse:
+        error = str(exc)
+        log_json_artifact(
+            logger,
+            "ingestion_summary.json",
+            {
+                "processed_file_path": processed_file_path,
+                "collection_name": "",
+                "points_inserted": 0,
+                "status": "error",
+                "error": error,
+                "errors": [error],
+            },
+        )
+        return VectorIngestResponse(status="error", error=error, errors=[error])
