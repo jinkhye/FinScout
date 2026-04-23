@@ -8,9 +8,6 @@ from google.genai import types
 from pydantic import BaseModel, Field
 
 
-PDF_NAME = "99SMART-Annual-Report-2024.pdf"
-
-
 class AuditorResponse(BaseModel):
     company_name: str = Field(...)
     auditor_opinion: str = Field(...)
@@ -114,8 +111,12 @@ def build_auditor_output_payload(
     source_payload: Dict[str, Any],
     auditor_response: AuditorResponse,
 ) -> Dict[str, Any]:
+    pdf_name = source_payload.get("pdf_name")
+    if not isinstance(pdf_name, str) or not pdf_name.strip():
+        raise ValueError("source_payload must include pdf_name")
+
     payload: Dict[str, Any] = {
-        "pdf": source_payload.get("pdf", PDF_NAME),
+        "pdf_name": pdf_name,
         "company_name": auditor_response.company_name,
         "year": derive_year(auditor_response.audit_period),
         "auditor_opinion": auditor_response.auditor_opinion,
@@ -125,7 +126,7 @@ def build_auditor_output_payload(
     }
 
     for key, value in source_payload.items():
-        if key == "pdf":
+        if key == "pdf_name":
             continue
         payload[key] = value
 

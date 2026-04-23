@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import shutil
 from pathlib import Path
 from typing import Any, Dict, List
@@ -40,16 +41,21 @@ class DocumentIngestionService:
         self,
         file_path: str,
         classified_pages: Dict[str, List[int]],
+        logger: logging.Logger,
     ) -> DocumentProcessResponse:
         try:
+            logger.info("Processing request for %s", file_path)
             if not classified_pages:
                 raise ValueError("classified_pages cannot be empty")
 
             saved_path = self._resolve_pdf_path(file_path)
+            pdf_name = saved_path.name
+            logger.info("Resolved PDF path: %s", saved_path)
             pages, auditor_payload = await asyncio.to_thread(
-                self._run_pipeline, saved_path, classified_pages
+                self._run_pipeline, saved_path, classified_pages, logger
             )
             metadata = self._extract_auditor_metadata(auditor_payload)
+            logger.info("Processing completed successfully")
 
             return self._build_response(
                 file_path=saved_path,
@@ -61,9 +67,10 @@ class DocumentIngestionService:
                 error=None,
             )
         except Exception as exc:
+            logger.error("Processing failed: %s", exc)
             return DocumentProcessResponse(
                 file_path=file_path,
-                pdf=Path(file_path).name,
+                pdf_name=Path(file_path).name,
                 status="error",
                 error=str(exc),
                 errors=[str(exc)],
@@ -85,20 +92,25 @@ class DocumentIngestionService:
         self,
         saved_path: Path,
         classified_pages: Dict[str, List[int]],
+        logger: logging.Logger,
     ) -> tuple[List[PageOutput], Dict[str, Any]]:
         artifacts = build_pipeline_artifacts(self._settings, saved_path.name)
         artifacts.pipeline_dir.mkdir(parents=True, exist_ok=True)
+        logger.info("Pipeline artifact directory: %s", artifacts.pipeline_dir)
 
         if saved_path.resolve() != artifacts.upload_path.resolve():
             shutil.copy2(saved_path, artifacts.upload_path)
+            logger.info("Copied PDF to %s", artifacts.upload_path)
 
         page_to_section = self._page_to_section(classified_pages)
         pages_to_parse = sorted(page_to_section)
+        logger.info("Pages queued for parsing: %d", len(pages_to_parse))
 
         raw_pages = self._parse_pdf_pages(
             saved_path=saved_path,
             page_to_section=page_to_section,
             pages_to_parse=pages_to_parse,
+            logger=logger,
         )
         self._write_pages(
             artifacts.raw_json,
@@ -108,6 +120,7 @@ class DocumentIngestionService:
         )
 
         cleaned_pages = self._clean_pages(raw_pages)
+        logger.info("Cleaned pages: %d", len(cleaned_pages))
         self._write_pages(
             artifacts.cleaned_json,
             saved_path.name,
@@ -121,6 +134,7 @@ class DocumentIngestionService:
             cleaned_pages=cleaned_pages,
         )
         write_json_payload(artifacts.auditor_json, auditor_payload)
+        logger.info("Auditor metadata extracted")
 
         pages = [PageOutput.model_validate(page) for page in cleaned_pages]
         return pages, auditor_payload
@@ -144,6 +158,7 @@ class DocumentIngestionService:
         saved_path: Path,
         page_to_section: Dict[int, str],
         pages_to_parse: List[int],
+        logger: logging.Logger,
     ) -> List[Dict[str, Any]]:
         from llama_cloud import LlamaCloud  # type: ignore
 
@@ -153,6 +168,10 @@ class DocumentIngestionService:
         for batch_pages in chunk_pages(
             pages_to_parse, self._settings.llamaparse_batch_size
         ):
+            logger.info(
+                "Parsing pages with LlamaParse: %s",
+                pages_to_target_pages(batch_pages),
+            )
             result = client.parsing.parse(
                 upload_file=str(saved_path),
                 tier=self._settings.llamaparse_tier,
@@ -238,7 +257,7 @@ class DocumentIngestionService:
         cleaned_pages: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
         source_payload = {
-            "pdf": pdf_name,
+            "pdf_name": pdf_name,
             "total_pages_parsed": len(cleaned_pages),
             "classified_pages": classified_pages,
             "pages": cleaned_pages,
@@ -262,7 +281,7 @@ class DocumentIngestionService:
         write_json_payload(
             path,
             {
-                "pdf": pdf_name,
+                "pdf_name": pdf_name,
                 "total_pages_parsed": len(pages),
                 "classified_pages": classified_pages,
                 "pages": pages,
@@ -305,7 +324,7 @@ class DocumentIngestionService:
     ) -> DocumentProcessResponse:
         return DocumentProcessResponse(
             file_path=str(file_path),
-            pdf=pdf_name,
+            pdf_name=pdf_name,
             company_name=metadata["company_name"],
             year=metadata["year"],
             auditor_opinion=metadata["auditor_opinion"],

@@ -46,6 +46,7 @@ Desktop.ini
 
 # Logs
 *.log
+backend/logs/
 
 # --- Project-specific ---
 # Local PDFs placed in cases/ (keep JSON templates)

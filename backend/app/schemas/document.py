@@ -121,7 +121,7 @@ class PageOutput(BaseModel):
 
 class DocumentProcessResponse(BaseModel):
     file_path: str = ""
-    pdf: str = ""
+    pdf_name: str = ""
     company_name: str = "unknown"
     year: str = "unknown"
     auditor_opinion: Literal["qualified", "unqualified", "unknown"] = "unknown"

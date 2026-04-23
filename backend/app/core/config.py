@@ -13,6 +13,7 @@ class Settings:
     backend_root: Path
     uploads_dir: Path
     pipeline_dir: Path
+    logs_dir: Path
     app_name: str = "FinScout Document API"
     api_version: str = "0.1.0"
     llamaparse_tier: str = "agentic"
@@ -35,4 +36,5 @@ def get_settings() -> Settings:
         backend_root=backend_root,
         uploads_dir=backend_root / "storage" / "uploads",
         pipeline_dir=backend_root / "storage" / "pipelines",
+        logs_dir=backend_root / "logs",
     )
