@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -13,7 +14,7 @@ from qdrant_client.models import Distance, PointStruct, VectorParams
 from ...core.config import Settings
 from ...core.logger import log_json_artifact
 from ...schemas.vector import VectorIngestResponse
-from ..common.gemini import get_gemini_client
+from ..common.gemini import embed_text_with_retries, get_gemini_client
 
 
 class VectorIngestionService:
@@ -57,7 +58,7 @@ class VectorIngestionService:
         if gemini_client is None:
             raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY must be set for embeddings")
 
-        embeddings = self._embed_pages(gemini_client, pages, logger)
+        embeddings = self._embed_pages(gemini_client, processed_payload, pages, logger)
         vector_size = len(embeddings[0])
         points = self._build_points(processed_payload, pages, embeddings)
 
@@ -129,6 +130,7 @@ class VectorIngestionService:
     def _embed_pages(
         self,
         gemini_client: Any,
+        processed_payload: Dict[str, Any],
         pages: List[Dict[str, Any]],
         logger: logging.Logger,
     ) -> List[List[float]]:
@@ -137,18 +139,41 @@ class VectorIngestionService:
         for index, page in enumerate(pages, start=1):
             page_number = page.get("page_number", "unknown")
             logger.info("Embedding page %s (%d/%d)", page_number, index, total)
-            response = gemini_client.models.embed_content(
-                model=self._settings.gemini_embedding_model,
-                contents=self._document_embedding_text(page),
+            embeddings.append(
+                self._embed_page(gemini_client, processed_payload, page, logger)
             )
-            embeddings.append(self._extract_embedding(response))
+            if index < total:
+                time.sleep(self._settings.gemini_embedding_delay_sec)
 
         return embeddings
 
-    def _document_embedding_text(self, page: Dict[str, Any]) -> str:
-        section = str(page.get("section") or "unknown")
+    def _embed_page(
+        self,
+        gemini_client: Any,
+        processed_payload: Dict[str, Any],
+        page: Dict[str, Any],
+        logger: logging.Logger,
+    ) -> List[float]:
         page_number = page.get("page_number", "unknown")
-        title = f"{section} page {page_number}"
+        return embed_text_with_retries(
+            gemini_client=gemini_client,
+            model=self._settings.gemini_embedding_model,
+            text=self._document_embedding_text(processed_payload, page),
+            max_retries=self._settings.gemini_embedding_max_retries,
+            retry_delay_sec=self._settings.gemini_retry_delay_sec,
+            logger=logger,
+            label=f"page {page_number}",
+        )
+
+    def _document_embedding_text(
+        self,
+        processed_payload: Dict[str, Any],
+        page: Dict[str, Any],
+    ) -> str:
+        company_name = str(processed_payload.get("company_name") or "unknown company")
+        year = str(processed_payload.get("year") or "unknown year")
+        section = str(page.get("section") or "unknown")
+        title = f"{company_name} annual report {year} {section}"
         content = str(page.get("text_for_embedding") or "")
         return f"title: {title} | text: {content}"
 
@@ -166,15 +191,6 @@ class VectorIngestionService:
 
         logger.info("Connected to Qdrant at %s", self._settings.qdrant_url)
         return qdrant
-
-    def _extract_embedding(self, response: Any) -> List[float]:
-        embeddings = getattr(response, "embeddings", None)
-        if embeddings:
-            values = getattr(embeddings[0], "values", None)
-            if values:
-                return [float(value) for value in values]
-
-        raise ValueError("Gemini embedding response did not contain vector values")
 
     def _build_points(
         self,

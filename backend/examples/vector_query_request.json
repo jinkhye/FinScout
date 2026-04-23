@@ -1,0 +1,11 @@
+{
+  "collection_name": "report_99smart_annual_report_2024",
+  "query": "What was the total revenue in 2024?",
+  "top_k": 5,
+  "filters": {
+    "sections": ["income_statement"],
+    "company_name": "99 Speed Mart Retail Holdings Berhad",
+    "year": "2024",
+    "has_table": true
+  }
+}
