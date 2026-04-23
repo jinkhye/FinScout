@@ -11,13 +11,11 @@ from typing import Any, Mapping
 class Settings:
     repository_root: Path
     backend_root: Path
-    cases_dir: Path
     uploads_dir: Path
     pipeline_dir: Path
     pipeline_config_path: Path
     app_name: str = "FinScout Document API"
     api_version: str = "0.1.0"
-    default_case_stem: str = "99SMART-Annual-Report-2024"
     llamaparse_tier: str = "agentic"
     llamaparse_version: str = "latest"
     llamaparse_batch_size: int = 10
@@ -70,7 +68,6 @@ def get_settings() -> Settings:
     return Settings(
         repository_root=repository_root,
         backend_root=backend_root,
-        cases_dir=repository_root / "cases",
         uploads_dir=_resolve_path(
             repository_root,
             storage_config.get("uploads_dir"),

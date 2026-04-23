@@ -23,14 +23,13 @@ class PipelineArtifacts:
 
 
 def build_pipeline_artifacts(settings: Settings, pdf_name: str) -> PipelineArtifacts:
-    pdf_stem = Path(pdf_name).stem or pdf_name
-    pipeline_dir = settings.pipeline_dir / pdf_stem
+    output_dir = settings.pipeline_dir / (Path(pdf_name).with_suffix("").name or pdf_name)
     return PipelineArtifacts(
         upload_path=settings.uploads_dir / pdf_name,
-        pipeline_dir=pipeline_dir,
-        raw_json=pipeline_dir / "raw_pages.json",
-        cleaned_json=pipeline_dir / "cleaned_pages.json",
-        auditor_json=pipeline_dir / "auditor_report.json",
+        pipeline_dir=output_dir,
+        raw_json=output_dir / "raw_pages.json",
+        cleaned_json=output_dir / "cleaned_pages.json",
+        auditor_json=output_dir / "auditor_report.json",
     )
 
 

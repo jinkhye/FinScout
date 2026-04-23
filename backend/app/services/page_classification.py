@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 
-def normalize_classified_pages(classified_pages: Any) -> Dict[str, List[int]]:
+def validate_classified_pages(classified_pages: Any) -> Dict[str, List[int]]:
     if not isinstance(classified_pages, dict):
         raise ValueError("classified_pages must be a JSON object")
 

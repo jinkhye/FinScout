@@ -26,7 +26,7 @@ from .ingestion_pipeline import (
     pages_to_target_pages,
     write_json_payload,
 )
-from .page_classification import normalize_classified_pages
+from .page_classification import validate_classified_pages
 from .table_processing import (
     extract_table_blocks,
     inject_table_summaries,
@@ -48,7 +48,7 @@ class DocumentIngestionService:
         pdf_name = saved_path.name
 
         try:
-            classified_pages = normalize_classified_pages(classified_pages_raw)
+            classified_pages = validate_classified_pages(classified_pages_raw)
             if not classified_pages:
                 raise ValueError("classified_pages cannot be empty")
 
