@@ -21,8 +21,11 @@ class Settings:
     llamaparse_batch_size: int = 10
     llamaparse_ignore_text_in_image: bool = True
     gemini_model: str = "gemini-3.1-flash-lite-preview"
+    gemini_embedding_model: str = "gemini-embedding-2"
     gemini_max_retries: int = 10
     gemini_retry_delay_sec: float = 1.0
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_distance: str = "cosine"
 
 
 @lru_cache(maxsize=1)

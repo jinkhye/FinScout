@@ -6,9 +6,10 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict, List
 
-from ..core.config import Settings
-from ..core.logger import log_json_artifact, log_text_artifact
-from ..schemas.document import DocumentProcessResponse, PageOutput
+from ...core.config import Settings
+from ...core.logger import log_json_artifact, log_text_artifact
+from ...schemas.document import DocumentProcessResponse, PageOutput
+from ..common.gemini import get_gemini_client
 from .auditor_extraction import (
     build_auditor_output_payload,
     build_consolidated_auditor_markdown,
@@ -21,7 +22,6 @@ from .ingestion_pipeline import (
     build_pipeline_artifacts,
     chunk_pages,
     clean_markdown_for_embedding,
-    get_gemini_client,
     pages_to_target_pages,
     write_json_payload,
 )

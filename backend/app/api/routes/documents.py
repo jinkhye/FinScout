@@ -6,7 +6,9 @@ from ...core.config import get_settings
 from ...core.logger import create_run_logger
 from ...dependencies import get_document_ingestion_service
 from ...schemas.document import DocumentProcessRequest, DocumentProcessResponse
-from ...services.document_ingestion_service import DocumentIngestionService
+from ...services.document_processing.document_ingestion_service import (
+    DocumentIngestionService,
+)
 
 
 router = APIRouter()

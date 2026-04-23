@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 
-from dotenv import load_dotenv
-from google import genai
-
-from ..core.config import Settings
+from ...core.config import Settings
 
 
 @dataclass(frozen=True)
@@ -106,10 +102,3 @@ def clean_markdown_for_embedding(markdown: str) -> str:
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
-
-def get_gemini_client() -> Optional[Any]:
-    load_dotenv()
-    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        return None
-    return genai.Client(api_key=api_key)

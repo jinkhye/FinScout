@@ -5,3 +5,4 @@ python-dotenv
 google-genai
 pydantic
 llama-cloud
+qdrant-client

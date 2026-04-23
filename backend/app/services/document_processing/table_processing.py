@@ -4,7 +4,7 @@ import re
 import time
 from typing import Any, List, Optional, Tuple
 
-from ..core.config import Settings
+from ...core.config import Settings
 
 
 TABLE_SUMMARY_FALLBACK = "Table summary unavailable."
