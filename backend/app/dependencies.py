@@ -6,6 +6,7 @@ from .core.config import Settings, get_settings
 from .services.document_processing.document_ingestion_service import (
     DocumentIngestionService,
 )
+from .services.query_planning.query_context_service import QueryContextService
 from .services.query_planning.query_planner_service import QueryPlannerService
 from .services.vector_ingestion.vector_ingestion_service import VectorIngestionService
 from .services.vector_ingestion.vector_query_service import VectorQueryService
@@ -29,6 +30,11 @@ def get_vector_query_service() -> VectorQueryService:
 @lru_cache(maxsize=1)
 def get_query_planner_service() -> QueryPlannerService:
     return QueryPlannerService(get_settings())
+
+
+@lru_cache(maxsize=1)
+def get_query_context_service() -> QueryContextService:
+    return QueryContextService(get_settings())
 
 
 def get_app_settings() -> Settings:

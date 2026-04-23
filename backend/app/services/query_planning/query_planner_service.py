@@ -69,7 +69,9 @@ class QueryPlannerService:
 
         client = get_gemini_client()
         if client is None:
-            raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY must be set for planning")
+            raise ValueError(
+                "GEMINI_API_KEY or GOOGLE_API_KEY must be set for planning"
+            )
 
         prompt = self._build_prompt(
             query=request.query,
@@ -185,8 +187,6 @@ class QueryPlannerService:
             - cashflow_statement: operating, investing, financing cash flows, cash balances
             - notes: accounting policies, detailed notes, segment details, commitments, related parties
             - other: anything that does not fit the above
-
-            Return JSON only.
             """
         ).strip()
 
