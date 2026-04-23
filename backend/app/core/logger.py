@@ -25,6 +25,7 @@ def create_run_logger(
     logger.setLevel(logging.INFO)
     logger.propagate = False
     logger.handlers.clear()
+    logger.run_dir = run_dir  # type: ignore[attr-defined]
 
     handler = logging.FileHandler(run_dir / "run.log", encoding="utf-8")
     handler.setFormatter(
@@ -36,6 +37,39 @@ def create_run_logger(
     logger.addHandler(handler)
     logger.info("Run started: %s", run_dir)
     return logger
+
+
+def log_json_artifact(
+    logger: logging.Logger,
+    relative_path: str,
+    payload: Any,
+) -> Path:
+    path = _artifact_path(logger, relative_path)
+    path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def log_text_artifact(
+    logger: logging.Logger,
+    relative_path: str,
+    text: str,
+) -> Path:
+    path = _artifact_path(logger, relative_path)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _artifact_path(logger: logging.Logger, relative_path: str) -> Path:
+    run_dir = getattr(logger, "run_dir", None)
+    if not isinstance(run_dir, Path):
+        raise ValueError("Logger is missing run_dir")
+
+    path = run_dir / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def _run_directory(logs_dir: Path, endpoint_name: str) -> Path:

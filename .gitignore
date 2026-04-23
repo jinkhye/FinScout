@@ -1,9 +1,3 @@
-# Debug / Supplementary files
-debug/
-cases/
-scripts/
-notebooks/
-
 # --- Secrets ---
 .env
 .env.*
@@ -49,8 +43,10 @@ Desktop.ini
 backend/logs/
 
 # --- Project-specific ---
-# Local PDFs placed in cases/ (keep JSON templates)
-cases/**/*.pdf
+debug/
+cases/
+scripts/
+notebooks/
 
 # Common local vector/db storage directories (if you run Qdrant locally)
 qdrant_storage/

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from ..core.config import Settings
+from ..core.logger import log_json_artifact, log_text_artifact
 from ..schemas.document import DocumentProcessResponse, PageOutput
 from .auditor_extraction import (
     build_auditor_output_payload,
@@ -26,6 +27,7 @@ from .ingestion_pipeline import (
     write_json_payload,
 )
 from .table_processing import (
+    build_table_summary_prompt,
     extract_table_blocks,
     inject_table_summaries,
     replace_table_blocks_with_placeholders,
@@ -112,6 +114,13 @@ class DocumentIngestionService:
             pages_to_parse=pages_to_parse,
             logger=logger,
         )
+        self._log_markdown_pages(
+            logger,
+            "markdown/raw.md",
+            raw_pages,
+            markdown_key="markdown_raw",
+            title="Raw LlamaParse Markdown",
+        )
         self._write_pages(
             artifacts.raw_json,
             saved_path.name,
@@ -119,7 +128,14 @@ class DocumentIngestionService:
             raw_pages,
         )
 
-        cleaned_pages = self._clean_pages(raw_pages)
+        cleaned_pages = self._clean_pages(raw_pages, logger)
+        self._log_markdown_pages(
+            logger,
+            "markdown/cleaned_with_tables.md",
+            cleaned_pages,
+            markdown_key="markdown_clean",
+            title="Cleaned Markdown With Table Summaries",
+        )
         logger.info("Cleaned pages: %d", len(cleaned_pages))
         self._write_pages(
             artifacts.cleaned_json,
@@ -132,6 +148,7 @@ class DocumentIngestionService:
             pdf_name=saved_path.name,
             classified_pages=classified_pages,
             cleaned_pages=cleaned_pages,
+            logger=logger,
         )
         write_json_payload(artifacts.auditor_json, auditor_payload)
         logger.info("Auditor metadata extracted")
@@ -200,7 +217,11 @@ class DocumentIngestionService:
             for page_number in pages_to_parse
         ]
 
-    def _clean_pages(self, raw_pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _clean_pages(
+        self,
+        raw_pages: List[Dict[str, Any]],
+        logger: logging.Logger,
+    ) -> List[Dict[str, Any]]:
         gemini_client = get_gemini_client()
         cleaned_pages: List[Dict[str, Any]] = []
 
@@ -216,6 +237,7 @@ class DocumentIngestionService:
             tables: List[Dict[str, Any]] = []
             summaries: List[str] = []
             for table_index, table_raw in enumerate(table_blocks, start=1):
+                prompt = build_table_summary_prompt(section, table_raw)
                 summary, status, error = summarize_table_with_gemini(
                     gemini_client,
                     self._settings,
@@ -223,6 +245,16 @@ class DocumentIngestionService:
                     page_number,
                     table_index,
                     table_raw,
+                )
+                self._log_table_artifacts(
+                    logger,
+                    page_number=page_number,
+                    table_index=table_index,
+                    table_raw=table_raw,
+                    prompt=prompt,
+                    summary=summary,
+                    status=status,
+                    error=error,
                 )
                 summaries.append(summary)
                 tables.append(
@@ -255,6 +287,7 @@ class DocumentIngestionService:
         pdf_name: str,
         classified_pages: Dict[str, List[int]],
         cleaned_pages: List[Dict[str, Any]],
+        logger: logging.Logger,
     ) -> Dict[str, Any]:
         source_payload = {
             "pdf_name": pdf_name,
@@ -264,12 +297,64 @@ class DocumentIngestionService:
         }
         auditor_pages = load_auditor_pages(source_payload)
         consolidated_markdown = build_consolidated_auditor_markdown(auditor_pages)
+        log_text_artifact(logger, "auditor/input.md", consolidated_markdown)
         auditor_response = call_auditor_extraction_model(
             get_gemini_client(),
             self._settings.gemini_model,
             consolidated_markdown,
         )
-        return build_auditor_output_payload(source_payload, auditor_response)
+        auditor_payload = build_auditor_output_payload(source_payload, auditor_response)
+        log_json_artifact(logger, "auditor/output.json", auditor_payload)
+        return auditor_payload
+
+    def _log_markdown_pages(
+        self,
+        logger: logging.Logger,
+        relative_path: str,
+        pages: List[Dict[str, Any]],
+        *,
+        markdown_key: str,
+        title: str,
+    ) -> None:
+        parts = [f"# {title}", ""]
+        for page in pages:
+            parts.append(
+                f"<!-- page={page.get('page_number')} section={page.get('section', 'unknown')} -->"
+            )
+            parts.append("")
+            parts.append(str(page.get(markdown_key) or ""))
+            parts.append("")
+            parts.append("---")
+            parts.append("")
+
+        log_text_artifact(logger, relative_path, "\n".join(parts).rstrip() + "\n")
+
+    def _log_table_artifacts(
+        self,
+        logger: logging.Logger,
+        *,
+        page_number: int,
+        table_index: int,
+        table_raw: str,
+        prompt: str,
+        summary: str,
+        status: str,
+        error: str | None,
+    ) -> None:
+        base_path = f"tables/page_{page_number}_table_{table_index}"
+        log_text_artifact(logger, f"{base_path}_raw.md", table_raw + "\n")
+        log_text_artifact(logger, f"{base_path}_prompt.md", prompt + "\n")
+        log_json_artifact(
+            logger,
+            f"{base_path}_output.json",
+            {
+                "page_number": page_number,
+                "table_index": table_index,
+                "status": status,
+                "error": error,
+                "summary": summary,
+            },
+        )
 
     def _write_pages(
         self,

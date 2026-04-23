@@ -117,6 +117,13 @@ def inject_table_summaries(cleaned_text: str, summaries: List[str]) -> str:
     return re.sub(r"\s+", " ", out).strip()
 
 
+def build_table_summary_prompt(section: str, table_markdown: str) -> str:
+    return TABLE_SUMMARY_PROMPT.format(
+        section=section,
+        table_markdown=table_markdown,
+    )
+
+
 def summarize_table_with_gemini(
     client: Optional[Any],
     settings: Settings,
@@ -128,10 +135,7 @@ def summarize_table_with_gemini(
     if client is None:
         return TABLE_SUMMARY_FALLBACK, "fallback", "Gemini client unavailable"
 
-    prompt = TABLE_SUMMARY_PROMPT.format(
-        section=section,
-        table_markdown=table_markdown,
-    )
+    prompt = build_table_summary_prompt(section, table_markdown)
 
     last_error: Optional[str] = None
     total_attempts = settings.gemini_max_retries + 1

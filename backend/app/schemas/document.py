@@ -82,7 +82,7 @@ CLASSIFIED_PAGES_EXAMPLE: Dict[str, List[int]] = {
 class DocumentProcessRequest(BaseModel):
     file_path: str = Field(
         ...,
-        examples=["cases/99SMART-Annual-Report-2024.pdf"],
+        examples=["uploads/99SMART-Annual-Report-2024.pdf"],
     )
     classified_pages: Dict[str, List[PageNumber]] = Field(
         ...,
@@ -93,7 +93,7 @@ class DocumentProcessRequest(BaseModel):
         "json_schema_extra": {
             "examples": [
                 {
-                    "file_path": "cases/99SMART-Annual-Report-2024.pdf",
+                    "file_path": "uploads/99SMART-Annual-Report-2024.pdf",
                     "classified_pages": CLASSIFIED_PAGES_EXAMPLE,
                 }
             ]
