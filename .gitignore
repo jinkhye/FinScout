@@ -1,0 +1,64 @@
+# Debug / Supplementary files
+debug/
+cases/
+scripts/
+notebooks/
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Packaging / build artifacts
+build/
+dist/
+*.egg-info/
+
+# Test / type / lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Jupyter / IPython
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# Editors
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+
+# --- Project-specific ---
+# Local PDFs placed in cases/ (keep JSON templates)
+cases/**/*.pdf
+
+# Common local vector/db storage directories (if you run Qdrant locally)
+qdrant_storage/
+qdrant_data/
+.qdrant/
+
+# Backend upload cache
+backend/storage/
+
+# LlamaIndex / general caches
+storage/
+.cache/

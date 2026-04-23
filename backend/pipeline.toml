@@ -1,0 +1,18 @@
+[storage]
+uploads_dir = "backend/storage/uploads"
+pipeline_dir = "backend/storage/pipelines"
+debug_dir = "debug"
+
+[llamaparse]
+tier = "agentic"
+version = "latest"
+batch_size = 10
+ignore_text_in_image = true
+
+[gemini]
+model = "gemini-3.1-flash-lite-preview"
+max_retries = 10
+retry_delay_sec = 1.0
+
+[output]
+debug_pages_per_file = 5
