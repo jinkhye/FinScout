@@ -37,7 +37,9 @@ class QueryContextService:
         self._validate_sections(request.sections)
         section = request.sections[0]
 
-        path, processed_payload = self._load_processed_payload(request.processed_file_path)
+        path, processed_payload = self._load_processed_payload(
+            request.processed_file_path
+        )
         pages = self._section_pages(processed_payload, section)
         if not pages:
             raise ValueError(f"No pages found for section: {section}")

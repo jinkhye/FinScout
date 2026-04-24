@@ -38,7 +38,9 @@ def resolve_processed_file_path(settings: Settings, processed_file_path: str) ->
     return candidate
 
 
-def load_processed_payload(settings: Settings, processed_file_path: str) -> tuple[Path, dict[str, Any]]:
+def load_processed_payload(
+    settings: Settings, processed_file_path: str
+) -> tuple[Path, dict[str, Any]]:
     path = resolve_processed_file_path(settings, processed_file_path)
     with path.open("r", encoding="utf-8") as file:
         payload = json.load(file)
@@ -109,7 +111,9 @@ def resolve_collection_name(
     if collection_name and collection_name.strip():
         return collection_name.strip()
     if not processed_file_path:
-        raise ValueError("processed_file_path is required when collection_name is not provided")
+        raise ValueError(
+            "processed_file_path is required when collection_name is not provided"
+        )
     _, record = load_vector_index_record(settings, processed_file_path)
     return record.collection_name
 

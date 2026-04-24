@@ -101,4 +101,3 @@ def clean_markdown_for_embedding(markdown: str) -> str:
     text = re.sub(r"<[^>]+>", " ", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
-

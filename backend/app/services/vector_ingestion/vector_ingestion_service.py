@@ -47,7 +47,9 @@ class VectorIngestionService:
         processed_file_path: str,
         logger: logging.Logger,
     ) -> VectorIngestResponse:
-        path, processed_payload = load_processed_payload(self._settings, processed_file_path)
+        path, processed_payload = load_processed_payload(
+            self._settings, processed_file_path
+        )
 
         pdf_name = str(processed_payload.get("pdf_name") or path.stem)
         collection_name = self._build_collection_name(pdf_name)
@@ -61,7 +63,9 @@ class VectorIngestionService:
         qdrant = self._connect_to_qdrant(logger)
         gemini_client = get_gemini_client()
         if gemini_client is None:
-            raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY must be set for embeddings")
+            raise ValueError(
+                "GEMINI_API_KEY or GOOGLE_API_KEY must be set for embeddings"
+            )
 
         embeddings = self._embed_pages(gemini_client, processed_payload, pages, logger)
         vector_size = len(embeddings[0])
@@ -94,7 +98,9 @@ class VectorIngestionService:
         }
         log_json_artifact(logger, "ingestion_summary.json", summary)
         logger.info("Inserted %d points into %s", len(points), collection_name)
-        logger.info("Saved vector index metadata to %s", path.parent / "vector_index.json")
+        logger.info(
+            "Saved vector index metadata to %s", path.parent / "vector_index.json"
+        )
 
         return VectorIngestResponse(
             collection_name=collection_name,
@@ -248,7 +254,9 @@ class VectorIngestionService:
             return Distance.DOT
         if normalized in {"euclid", "euclidean"}:
             return Distance.EUCLID
-        raise ValueError(f"Unsupported Qdrant distance: {self._settings.qdrant_distance}")
+        raise ValueError(
+            f"Unsupported Qdrant distance: {self._settings.qdrant_distance}"
+        )
 
     def _build_collection_name(self, pdf_name: str) -> str:
         stem = Path(pdf_name).with_suffix("").name

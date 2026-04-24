@@ -21,7 +21,9 @@ class AgentAskRequest(BaseModel):
         default=None,
         examples=["report_99smart_annual_report_2024"],
     )
-    question: str = Field(..., min_length=1, examples=["What was the total revenue in 2024?"])
+    question: str = Field(
+        ..., min_length=1, examples=["What was the total revenue in 2024?"]
+    )
     top_k: int = Field(default=8, ge=1, le=20)
     rerank: bool = False
 

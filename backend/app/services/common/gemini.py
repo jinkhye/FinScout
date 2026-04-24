@@ -55,7 +55,9 @@ def extract_embedding(response: Any) -> List[float]:
     raise ValueError("Gemini embedding response did not contain vector values")
 
 
-def embedding_retry_delay(exc: Exception, attempt: int, retry_delay_sec: float) -> float:
+def embedding_retry_delay(
+    exc: Exception, attempt: int, retry_delay_sec: float
+) -> float:
     message = str(exc).lower()
     if "429" in message or "resource_exhausted" in message or "quota" in message:
         return 60.0

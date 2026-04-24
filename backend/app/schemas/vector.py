@@ -87,7 +87,9 @@ class VectorQueryRequest(BaseModel):
     def require_processed_file_or_collection_name(self) -> "VectorQueryRequest":
         if self.processed_file_path or self.collection_name:
             return self
-        raise ValueError("Either processed_file_path or collection_name must be provided")
+        raise ValueError(
+            "Either processed_file_path or collection_name must be provided"
+        )
 
     model_config = {
         "json_schema_extra": {
@@ -96,9 +98,7 @@ class VectorQueryRequest(BaseModel):
                     "processed_file_path": "backend/storage/pipelines/99SMART-Annual-Report-2024/processed_99SMART-Annual-Report-2024.json",
                     "query": "What was the total revenue in 2024?",
                     "top_k": 5,
-                    "filters": {
-                        "sections": ["income_statement"]
-                    },
+                    "filters": {"sections": ["income_statement"]},
                 }
             ]
         }

@@ -54,7 +54,9 @@ class VectorQueryService:
 
         gemini_client = get_gemini_client()
         if gemini_client is None:
-            raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY must be set for embeddings")
+            raise ValueError(
+                "GEMINI_API_KEY or GOOGLE_API_KEY must be set for embeddings"
+            )
 
         query_vector = embed_text_with_retries(
             gemini_client=gemini_client,

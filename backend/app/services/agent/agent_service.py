@@ -125,13 +125,23 @@ class AgentService:
                 logger=logger,
             )
             if context_response.status != "success":
-                raise ValueError(context_response.error or "Full-context loading failed")
+                raise ValueError(
+                    context_response.error or "Full-context loading failed"
+                )
 
-            log_json_artifact(logger, "context_output.json", context_response.model_dump())
-            return context_response.context_text, self._evidence_from_context(
+            log_json_artifact(
+                logger, "context_output.json", context_response.model_dump()
+            )
+            return (
                 context_response.context_text,
-                planner.full_context_sections[0] if planner.full_context_sections else "",
-            ), False
+                self._evidence_from_context(
+                    context_response.context_text,
+                    planner.full_context_sections[0]
+                    if planner.full_context_sections
+                    else "",
+                ),
+                False,
+            )
 
         collection_name = resolve_collection_name(
             self._settings,
@@ -157,7 +167,11 @@ class AgentService:
         if request.rerank:
             results, reranked = self._rerank_results(request, planner, results, logger)
 
-        return self._context_from_results(results), self._evidence_from_results(results), reranked
+        return (
+            self._context_from_results(results),
+            self._evidence_from_results(results),
+            reranked,
+        )
 
     def _vector_filters(self, planner: QueryPlanResponse) -> VectorQueryFilters | None:
         if not planner.vector_search_sections:
@@ -183,11 +197,15 @@ class AgentService:
             )
             log_text_artifact(logger, "reranker_prompt.md", prompt + "\n")
             reranker_output = self._call_reranker_model(prompt)
-            log_json_artifact(logger, "reranker_output.json", reranker_output.model_dump())
+            log_json_artifact(
+                logger, "reranker_output.json", reranker_output.model_dump()
+            )
 
             by_page = {result.page_number: result for result in results}
             reranked: List[VectorQueryResult] = []
-            for selection in sorted(reranker_output.selected_results, key=lambda item: item.rank):
+            for selection in sorted(
+                reranker_output.selected_results, key=lambda item: item.rank
+            ):
                 result = by_page.get(selection.page_number)
                 if result is not None and result not in reranked:
                     reranked.append(result)
@@ -213,7 +231,9 @@ class AgentService:
     def _call_reranker_model(self, prompt: str) -> RerankerOutput:
         client = get_gemini_client()
         if client is None:
-            raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY must be set for reranking")
+            raise ValueError(
+                "GEMINI_API_KEY or GOOGLE_API_KEY must be set for reranking"
+            )
 
         response = client.models.generate_content(
             model=self._settings.gemini_model,
@@ -231,7 +251,9 @@ class AgentService:
     def _call_answer_model(self, prompt: str) -> AnswerOutput:
         client = get_gemini_client()
         if client is None:
-            raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY must be set for answering")
+            raise ValueError(
+                "GEMINI_API_KEY or GOOGLE_API_KEY must be set for answering"
+            )
 
         response = client.models.generate_content(
             model=self._settings.gemini_model,
@@ -249,7 +271,9 @@ class AgentService:
     def _context_from_results(self, results: List[VectorQueryResult]) -> str:
         parts: List[str] = []
         for result in results:
-            parts.append(f"<!-- Page {result.page_number} | section={result.section} -->")
+            parts.append(
+                f"<!-- Page {result.page_number} | section={result.section} -->"
+            )
             parts.append("")
             parts.append(result.text)
             parts.append("")
@@ -257,7 +281,9 @@ class AgentService:
             parts.append("")
         return "\n".join(parts).strip() + "\n"
 
-    def _evidence_from_results(self, results: List[VectorQueryResult]) -> List[Dict[str, Any]]:
+    def _evidence_from_results(
+        self, results: List[VectorQueryResult]
+    ) -> List[Dict[str, Any]]:
         return [
             {
                 "page_number": result.page_number,
@@ -268,7 +294,9 @@ class AgentService:
             if result.page_number is not None
         ]
 
-    def _evidence_from_context(self, context_text: str, section: str) -> List[Dict[str, Any]]:
+    def _evidence_from_context(
+        self, context_text: str, section: str
+    ) -> List[Dict[str, Any]]:
         evidence: List[Dict[str, Any]] = []
         parts = [part.strip() for part in context_text.split("\n---\n") if part.strip()]
         for part in parts:

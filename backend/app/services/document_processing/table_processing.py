@@ -27,9 +27,7 @@ Table:
 Summary:"""
 
 
-HTML_TABLE_RE = re.compile(
-    r"<\s*table\b[^>]*>[\s\S]*?<\s*/\s*table\s*>", re.IGNORECASE
-)
+HTML_TABLE_RE = re.compile(r"<\s*table\b[^>]*>[\s\S]*?<\s*/\s*table\s*>", re.IGNORECASE)
 
 
 def _is_markdown_table_separator(line: str) -> bool:
@@ -54,8 +52,7 @@ def _markdown_table_spans(markdown: str) -> List[Tuple[int, int]]:
         header = lines[index]
         separator = lines[index + 1]
         if not (
-            _is_markdown_table_row(header)
-            and _is_markdown_table_separator(separator)
+            _is_markdown_table_row(header) and _is_markdown_table_separator(separator)
         ):
             offset += len(header)
             index += 1
