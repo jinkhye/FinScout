@@ -10,6 +10,7 @@ from .vector import SectionLabel
 QueryPlanStatus = Literal["success", "error"]
 QueryContextStatus = Literal["success", "error"]
 RouteStrategy = Literal["vector_search", "full_context"]
+QueryIntent = Literal["report_question", "direct_reply"]
 
 
 class QueryPlanRequest(BaseModel):
@@ -43,17 +44,19 @@ class QueryPlanRequest(BaseModel):
 
 
 class QueryPlannerModelOutput(BaseModel):
+    intent: QueryIntent = "report_question"
     optimized_query: str = Field(...)
     selected_sections: List[SectionLabel] = Field(default_factory=list)
 
 
 class QueryPlanResponse(BaseModel):
     original_query: str = ""
+    intent: QueryIntent = "report_question"
     optimized_query: str = ""
     company_name: str = "unknown"
     year: str = "unknown"
     selected_sections: List[SectionLabel] = Field(default_factory=list)
-    route_strategy: RouteStrategy = "vector_search"
+    route_strategy: RouteStrategy | None = None
     vector_search_sections: List[SectionLabel] = Field(default_factory=list)
     full_context_sections: List[SectionLabel] = Field(default_factory=list)
     status: QueryPlanStatus = "error"

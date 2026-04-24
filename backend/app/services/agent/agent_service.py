@@ -18,7 +18,7 @@ from ...schemas.vector import (
     VectorQueryResult,
 )
 from ..common.gemini import get_gemini_client
-from ..common.prompts import build_answer_prompt
+from ..common.prompts import build_answer_prompt, build_direct_reply_prompt
 from ..query_planning.query_context_service import QueryContextService
 from ..query_planning.query_planner_service import QueryPlannerService
 from ..vector_ingestion.vector_index import (
@@ -29,14 +29,15 @@ from .conversation_memory_service import ConversationMemoryService, Conversation
 from .reranker_service import RerankerService
 from ..vector_ingestion.vector_query_service import VectorQueryService
 
-class AnswerCitation(types._common.BaseModel):
+
+class AnswerCitation(BaseModel):
     page_number: int
     section: str
 
 
-class AnswerOutput(types._common.BaseModel):
+class AnswerOutput(BaseModel):
     answer: str
-    citations: List[AnswerCitation] = []
+    citations: List[AnswerCitation] = Field(default_factory=list)
 
 
 class AgentService:
@@ -80,8 +81,12 @@ class AgentService:
             )
             turn_index = self._memory.next_turn_index(request.session_id)
             recent_turns = self._memory.list_recent_turns(request.session_id, limit=3)
-            planner_conversation_context = self._planner_conversation_context(recent_turns)
-            answer_conversation_context = self._answer_conversation_context(recent_turns)
+            planner_conversation_context = self._planner_conversation_context(
+                recent_turns
+            )
+            answer_conversation_context = self._answer_conversation_context(
+                recent_turns
+            )
             self._log_conversation_context(
                 logger=logger,
                 session_id=session.session_id,
@@ -109,20 +114,33 @@ class AgentService:
             )
             if planner.status != "success":
                 raise ValueError(planner.error or "Query planner failed")
+            logger.info("Planner intent: %s", planner.intent)
             logger.info("Optimized query: %s", planner.optimized_query)
 
-            context_text, evidence, reranked = await self._build_context(
-                request,
-                planner,
-                collection_name,
-                logger,
-            )
-            prompt = build_answer_prompt(
-                question=request.question,
-                planner=planner,
-                context_text=context_text,
-                conversation_context=answer_conversation_context,
-            )
+            if planner.intent == "direct_reply":
+                logger.info("Retrieval skipped for direct-reply turn")
+                prompt = build_direct_reply_prompt(
+                    question=request.question,
+                    company_name=planner.company_name,
+                    year=planner.year,
+                    conversation_context=answer_conversation_context,
+                )
+                evidence: List[Dict[str, Any]] = []
+                reranked = False
+            else:
+                context_text, evidence, reranked = await self._build_context(
+                    request,
+                    planner,
+                    collection_name,
+                    logger,
+                )
+                prompt = build_answer_prompt(
+                    question=request.question,
+                    planner=planner,
+                    context_text=context_text,
+                    conversation_context=answer_conversation_context,
+                )
+
             log_text_artifact(logger, "answer_prompt.md", prompt + "\n")
             answer_output = self._call_answer_model(prompt)
 
@@ -135,7 +153,11 @@ class AgentService:
                 year=planner.year,
                 route_strategy=planner.route_strategy,
                 reranked=reranked,
-                citations=self._normalize_citations(answer_output.citations, evidence),
+                citations=(
+                    []
+                    if planner.intent == "direct_reply"
+                    else self._normalize_citations(answer_output.citations, evidence)
+                ),
                 planner=planner,
                 status="success",
                 errors=[],
@@ -144,9 +166,10 @@ class AgentService:
                 session_id=request.session_id,
                 turn_index=turn_index,
                 question=request.question,
+                intent=planner.intent,
                 optimized_query=planner.optimized_query,
                 selected_sections=list(planner.selected_sections),
-                route_strategy=planner.route_strategy,
+                route_strategy=planner.route_strategy or "",
                 reranked=reranked,
                 answer=response.answer,
                 citations=[citation.model_dump() for citation in response.citations],
@@ -186,9 +209,11 @@ class AgentService:
                 context_response.context_text,
                 self._evidence_from_context(
                     context_response.context_text,
-                    planner.full_context_sections[0]
-                    if planner.full_context_sections
-                    else "",
+                    (
+                        planner.full_context_sections[0]
+                        if planner.full_context_sections
+                        else ""
+                    ),
                 ),
                 False,
             )
@@ -401,7 +426,9 @@ class AgentService:
         for turn in turns:
             parts.append(f"Turn {turn.turn_index}")
             parts.append(f"User question: {turn.question}")
-            parts.append(f"Assistant answer summary: {self._truncate(turn.answer, 220)}")
+            parts.append(
+                f"Assistant answer summary: {self._truncate(turn.answer, 220)}"
+            )
             parts.append("")
         return "\n".join(parts).strip()
 
@@ -418,7 +445,9 @@ class AgentService:
             )
             parts.append(f"Turn {turn.turn_index}")
             parts.append(f"User question: {turn.question}")
-            parts.append(f"Assistant answer summary: {self._truncate(turn.answer, 260)}")
+            parts.append(
+                f"Assistant answer summary: {self._truncate(turn.answer, 260)}"
+            )
             if citations:
                 parts.append(f"Citations: {citations}")
             parts.append("")
@@ -445,6 +474,7 @@ class AgentService:
                     {
                         "turn_index": turn.turn_index,
                         "question": turn.question,
+                        "intent": turn.intent,
                         "optimized_query": turn.optimized_query,
                         "selected_sections": turn.selected_sections,
                         "route_strategy": turn.route_strategy,

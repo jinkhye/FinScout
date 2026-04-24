@@ -66,7 +66,7 @@ class AgentAskResponse(BaseModel):
     answer: str = ""
     company_name: str = "unknown"
     year: str = "unknown"
-    route_strategy: RouteStrategy = "vector_search"
+    route_strategy: RouteStrategy | None = None
     reranked: bool = False
     citations: List[AgentCitation] = Field(default_factory=list)
     planner: QueryPlanResponse | None = None

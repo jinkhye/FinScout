@@ -42,14 +42,18 @@ def build_query_planner_prompt(
         {sections}
 
         Task:
-        1. Correct typos and rewrite the user query as a clear retrieval query.
-        2. Preserve the original financial intent. Do not add new facts.
-        3. Decide whether the query should search all sections or specific sections.
-        4. If the query is broad, unclear, or spans the whole annual report, return selected_sections=[].
-        5. If the query clearly maps to one or more section labels, return only those labels in selected_sections.
-        6. Use only the available section labels. Do not invent labels.
-        7. Use the conversation context only to resolve references such as "that", "the same company", or "what about last year".
-        8. Do not let conversation context override the current report metadata.
+        1. Decide whether this turn is a report_question or a direct_reply.
+        2. Use direct_reply for greetings, acknowledgements, casual chit-chat, or conversational turns that do not need annual-report retrieval.
+        3. Use report_question for turns that need annual-report evidence.
+        4. Correct typos and rewrite the user query as a clear retrieval query.
+        5. Preserve the original financial intent. Do not add new facts.
+        6. If intent=report_question, decide whether the query should search all sections or specific sections.
+        7. If intent=report_question and the query is broad, unclear, or spans the whole annual report, return selected_sections=[].
+        8. If intent=report_question and the query clearly maps to one or more section labels, return only those labels in selected_sections.
+        9. If intent=direct_reply, return selected_sections=[].
+        10. Use only the available section labels. Do not invent labels.
+        11. Use the conversation context only to resolve references such as "that", "the same company", or "what about last year".
+        12. Do not let conversation context override the current report metadata.
 
         Section guidance:
         - company_overview: corporate profile, milestones, directors, business overview, outlets, strategy
@@ -154,5 +158,44 @@ def build_answer_prompt(
 
         Supplied context:
         {context_text}
+        """
+    ).strip()
+
+
+def build_direct_reply_prompt(
+    *,
+    question: str,
+    company_name: str,
+    year: str,
+    conversation_context: str = "",
+) -> str:
+    conversation_block = ""
+    if conversation_context.strip():
+        conversation_block = dedent(
+            f"""
+
+            Conversation context:
+            {conversation_context}
+            """
+        )
+    return dedent(
+        f"""
+        You are FinScout, a conversational assistant for annual-report questions.
+
+        Current report context:
+        - Company: {company_name}
+        - Year: {year}
+        - Document: annual report
+
+        User message:
+        {question}
+        {conversation_block}
+
+        Instructions:
+        - This turn does not require report retrieval.
+        - Reply naturally, briefly, and conversationally.
+        - Do not claim report facts unless retrieval was performed.
+        - You may invite the user to ask about the annual report when helpful.
+        - Return an empty citations list.
         """
     ).strip()

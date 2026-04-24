@@ -23,6 +23,7 @@ class ConversationSession:
 class ConversationTurn:
     turn_index: int
     question: str
+    intent: str
     optimized_query: str
     selected_sections: list[str]
     route_strategy: str
@@ -125,6 +126,7 @@ class ConversationMemoryService:
                 SELECT
                     turn_index,
                     question,
+                    intent,
                     optimized_query,
                     selected_sections,
                     route_strategy,
@@ -162,6 +164,7 @@ class ConversationMemoryService:
         session_id: str,
         turn_index: int,
         question: str,
+        intent: str,
         optimized_query: str,
         selected_sections: list[str],
         route_strategy: str,
@@ -177,6 +180,7 @@ class ConversationMemoryService:
                     session_id,
                     turn_index,
                     question,
+                    intent,
                     optimized_query,
                     selected_sections,
                     route_strategy,
@@ -184,12 +188,13 @@ class ConversationMemoryService:
                     answer,
                     citations,
                     created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
                     turn_index,
                     question,
+                    intent,
                     optimized_query,
                     json.dumps(selected_sections, ensure_ascii=False),
                     route_strategy,
@@ -229,6 +234,7 @@ class ConversationMemoryService:
                     session_id TEXT NOT NULL,
                     turn_index INTEGER NOT NULL,
                     question TEXT NOT NULL,
+                    intent TEXT NOT NULL DEFAULT 'report_question',
                     optimized_query TEXT NOT NULL,
                     selected_sections TEXT NOT NULL,
                     route_strategy TEXT NOT NULL,
@@ -241,6 +247,19 @@ class ConversationMemoryService:
                 )
                 """
             )
+            columns = {
+                str(row["name"])
+                for row in connection.execute(
+                    "PRAGMA table_info(conversation_turns)"
+                ).fetchall()
+            }
+            if "intent" not in columns:
+                connection.execute(
+                    """
+                    ALTER TABLE conversation_turns
+                    ADD COLUMN intent TEXT NOT NULL DEFAULT 'report_question'
+                    """
+                )
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self._db_path)
@@ -253,6 +272,7 @@ class ConversationMemoryService:
         return ConversationTurn(
             turn_index=int(row["turn_index"]),
             question=str(row["question"]),
+            intent=str(row["intent"]),
             optimized_query=str(row["optimized_query"]),
             selected_sections=[
                 str(section) for section in selected_sections if isinstance(section, str)

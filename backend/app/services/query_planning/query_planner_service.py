@@ -85,11 +85,13 @@ class QueryPlannerService:
         model_output = self._call_planner_model(client, prompt)
         normalized_output = self._normalize_model_output(model_output)
         route_strategy, vector_sections, full_context_sections = self._route_sections(
+            normalized_output.intent,
             normalized_output.selected_sections,
         )
 
         response = QueryPlanResponse(
             original_query=request.query,
+            intent=normalized_output.intent,
             optimized_query=normalized_output.optimized_query,
             company_name=company_name,
             year=year,
@@ -102,7 +104,8 @@ class QueryPlannerService:
         )
         log_json_artifact(logger, "planner_output.json", response.model_dump())
         logger.info(
-            "Query plan completed with route_strategy=%s sections=%s",
+            "Query plan completed with intent=%s route_strategy=%s sections=%s",
+            response.intent,
             response.route_strategy,
             response.selected_sections,
         )
@@ -172,14 +175,18 @@ class QueryPlannerService:
                 sections.append(section)
 
         return QueryPlannerModelOutput(
+            intent=model_output.intent,
             optimized_query=model_output.optimized_query.strip(),
-            selected_sections=sections,
+            selected_sections=[] if model_output.intent == "direct_reply" else sections,
         )
 
     def _route_sections(
         self,
+        intent: str,
         selected_sections: List[SectionLabel],
-    ) -> tuple[str, List[SectionLabel], List[SectionLabel]]:
+    ) -> tuple[str | None, List[SectionLabel], List[SectionLabel]]:
+        if intent == "direct_reply":
+            return None, [], []
         if not selected_sections:
             return "vector_search", [], []
 
@@ -203,6 +210,7 @@ class QueryPlannerService:
             "planner_output.json",
             {
                 "original_query": request.query,
+                "intent": "report_question",
                 "optimized_query": "",
                 "status": "error",
                 "error": error,
