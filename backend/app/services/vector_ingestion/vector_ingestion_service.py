@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import re
 import time
@@ -15,6 +14,12 @@ from ...core.config import Settings
 from ...core.logger import log_json_artifact
 from ...schemas.vector import VectorIngestResponse
 from ..common.gemini import embed_text_with_retries, get_gemini_client
+from .vector_index import (
+    append_vector_run,
+    build_vector_index_record,
+    load_processed_payload,
+    write_vector_index,
+)
 
 
 class VectorIngestionService:
@@ -42,7 +47,7 @@ class VectorIngestionService:
         processed_file_path: str,
         logger: logging.Logger,
     ) -> VectorIngestResponse:
-        path, processed_payload = self._load_processed_payload(processed_file_path)
+        path, processed_payload = load_processed_payload(self._settings, processed_file_path)
 
         pdf_name = str(processed_payload.get("pdf_name") or path.stem)
         collection_name = self._build_collection_name(pdf_name)
@@ -65,6 +70,17 @@ class VectorIngestionService:
         self._recreate_collection(qdrant, collection_name, vector_size)
         qdrant.upsert(collection_name=collection_name, points=points)
 
+        record = build_vector_index_record(
+            settings=self._settings,
+            processed_path=path,
+            processed_payload=processed_payload,
+            collection_name=collection_name,
+            points_inserted=len(points),
+            skipped_pages=skipped_pages,
+        )
+        write_vector_index(path, record)
+        append_vector_run(path, record)
+
         summary = {
             "processed_file_path": str(path),
             "collection_name": collection_name,
@@ -78,6 +94,7 @@ class VectorIngestionService:
         }
         log_json_artifact(logger, "ingestion_summary.json", summary)
         logger.info("Inserted %d points into %s", len(points), collection_name)
+        logger.info("Saved vector index metadata to %s", path.parent / "vector_index.json")
 
         return VectorIngestResponse(
             collection_name=collection_name,
@@ -85,26 +102,6 @@ class VectorIngestionService:
             status="success",
             errors=[],
         )
-
-    def _load_processed_payload(self, processed_file_path: str) -> tuple[Path, Dict[str, Any]]:
-        candidate = Path(processed_file_path)
-        if not candidate.is_absolute():
-            candidate = self._settings.repository_root / candidate
-        candidate = candidate.resolve()
-
-        if not candidate.exists():
-            raise FileNotFoundError(f"Processed file not found: {candidate}")
-        if not candidate.is_file():
-            raise ValueError(f"Processed path must point to a file: {candidate}")
-
-        with candidate.open("r", encoding="utf-8") as file:
-            payload = json.load(file)
-
-        if not isinstance(payload, dict):
-            raise ValueError("Processed file must contain a JSON object")
-        if not isinstance(payload.get("pages"), list):
-            raise ValueError("Processed file must contain a pages list")
-        return candidate, payload
 
     def _pages_to_embed(
         self,

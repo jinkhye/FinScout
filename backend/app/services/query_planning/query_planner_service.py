@@ -4,7 +4,6 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from textwrap import dedent
 from typing import Any, Dict, List
 
 from google.genai import types
@@ -18,6 +17,7 @@ from ...schemas.query import (
 )
 from ...schemas.vector import SectionLabel
 from ..common.gemini import get_gemini_client
+from ..common.prompts import build_query_planner_prompt
 
 
 SUPPORTED_SECTIONS: List[SectionLabel] = [
@@ -73,7 +73,7 @@ class QueryPlannerService:
                 "GEMINI_API_KEY or GOOGLE_API_KEY must be set for planning"
             )
 
-        prompt = self._build_prompt(
+        prompt = build_query_planner_prompt(
             query=request.query,
             company_name=company_name,
             year=year,
@@ -144,51 +144,6 @@ class QueryPlannerService:
             if section in classified_pages and classified_pages.get(section)
         ]
         return sections or list(SUPPORTED_SECTIONS)
-
-    def _build_prompt(
-        self,
-        *,
-        query: str,
-        company_name: str,
-        year: str,
-        available_sections: List[str],
-    ) -> str:
-        sections = ", ".join(available_sections)
-        return dedent(
-            f"""
-            You are the query planner for an annual-report RAG system.
-
-            Report context:
-            - Company: {company_name}
-            - Year: {year}
-            - Document: annual report
-
-            User query:
-            {query}
-
-            Available section labels:
-            {sections}
-
-            Task:
-            1. Correct typos and rewrite the user query as a clear retrieval query.
-            2. Preserve the original financial intent. Do not add new facts.
-            3. Decide whether the query should search all sections or specific sections.
-            4. If the query is broad, unclear, or spans the whole annual report, set no_filter=true and selected_sections=[].
-            5. If the query clearly maps to one or more section labels, set no_filter=false and selected_sections to those labels only.
-            6. Use only the available section labels. Do not invent labels.
-
-            Section guidance:
-            - company_overview: corporate profile, milestones, directors, business overview, outlets, strategy
-            - mda: chairman statement, MD review, management discussion, operations, performance narrative
-            - auditor_report: audit opinion, auditor, key audit matters, audit responsibilities
-            - balance_sheet: assets, liabilities, equity, financial position
-            - income_statement: revenue, profit, EPS, income, comprehensive income
-            - equitychange_statement: dividends, reserves, issued capital, changes in equity
-            - cashflow_statement: operating, investing, financing cash flows, cash balances
-            - notes: accounting policies, detailed notes, segment details, commitments, related parties
-            - other: anything that does not fit the above
-            """
-        ).strip()
 
     def _call_planner_model(
         self,

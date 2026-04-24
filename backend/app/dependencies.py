@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 from .core.config import Settings, get_settings
+from .services.agent.agent_service import AgentService
 from .services.document_processing.document_ingestion_service import (
     DocumentIngestionService,
 )
@@ -35,6 +36,17 @@ def get_query_planner_service() -> QueryPlannerService:
 @lru_cache(maxsize=1)
 def get_query_context_service() -> QueryContextService:
     return QueryContextService(get_settings())
+
+
+@lru_cache(maxsize=1)
+def get_agent_service() -> AgentService:
+    settings = get_settings()
+    return AgentService(
+        settings=settings,
+        planner=get_query_planner_service(),
+        context_loader=get_query_context_service(),
+        vector_query=get_vector_query_service(),
+    )
 
 
 def get_app_settings() -> Settings:

@@ -16,6 +16,7 @@ from ...schemas.vector import (
     VectorQueryResult,
 )
 from ..common.gemini import embed_text_with_retries, get_gemini_client
+from .vector_index import resolve_collection_name
 
 
 class VectorQueryService:
@@ -28,7 +29,10 @@ class VectorQueryService:
         logger: logging.Logger,
     ) -> VectorQueryResponse:
         try:
-            logger.info("Vector query request for %s", request.collection_name)
+            logger.info(
+                "Vector query request for %s",
+                request.collection_name or request.processed_file_path,
+            )
             return await asyncio.to_thread(self._query_sync, request, logger)
         except Exception as exc:
             logger.error("Vector query failed: %s", exc)
@@ -39,9 +43,14 @@ class VectorQueryService:
         request: VectorQueryRequest,
         logger: logging.Logger,
     ) -> VectorQueryResponse:
+        collection_name = resolve_collection_name(
+            self._settings,
+            request.processed_file_path,
+            request.collection_name,
+        )
         qdrant = self._connect_to_qdrant(logger)
-        if not qdrant.collection_exists(request.collection_name):
-            raise ValueError(f"Qdrant collection not found: {request.collection_name}")
+        if not qdrant.collection_exists(collection_name):
+            raise ValueError(f"Qdrant collection not found: {collection_name}")
 
         gemini_client = get_gemini_client()
         if gemini_client is None:
@@ -57,10 +66,10 @@ class VectorQueryService:
             label="query",
         )
         qdrant_filter = self._build_filter(request.filters)
-        logger.info("Searching %s with top_k=%d", request.collection_name, request.top_k)
+        logger.info("Searching %s with top_k=%d", collection_name, request.top_k)
 
         response = qdrant.query_points(
-            collection_name=request.collection_name,
+            collection_name=collection_name,
             query=query_vector,
             query_filter=qdrant_filter,
             limit=request.top_k,
@@ -70,7 +79,8 @@ class VectorQueryService:
         results = self._build_results(getattr(response, "points", []) or [])
 
         summary = {
-            "collection_name": request.collection_name,
+            "processed_file_path": request.processed_file_path,
+            "collection_name": collection_name,
             "query": request.query,
             "top_k": request.top_k,
             "filters": request.filters.model_dump() if request.filters else None,
@@ -82,7 +92,7 @@ class VectorQueryService:
         logger.info("Vector query returned %d results", len(results))
 
         return VectorQueryResponse(
-            collection_name=request.collection_name,
+            collection_name=collection_name,
             query=request.query,
             top_k=request.top_k,
             results_count=len(results),
@@ -175,6 +185,7 @@ class VectorQueryService:
             "query_summary.json",
             {
                 "collection_name": request.collection_name,
+                "processed_file_path": request.processed_file_path,
                 "query": request.query,
                 "top_k": request.top_k,
                 "results_count": 0,
@@ -184,7 +195,7 @@ class VectorQueryService:
             },
         )
         return VectorQueryResponse(
-            collection_name=request.collection_name,
+            collection_name=request.collection_name or "",
             query=request.query,
             top_k=request.top_k,
             status="error",
