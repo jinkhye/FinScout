@@ -1,0 +1,527 @@
+:root {
+  color-scheme: dark;
+  --bg: #0f1318;
+  --panel: #141a21;
+  --panel-2: #1a222c;
+  --panel-3: #202a36;
+  --border: rgba(164, 180, 198, 0.14);
+  --muted: #8b9aad;
+  --text: #eff5fb;
+  --accent: #54b4ff;
+  --accent-soft: rgba(84, 180, 255, 0.16);
+  --success: #7dd3a8;
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+}
+
+body {
+  min-height: 100vh;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.appShell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(380px, 0.85fr);
+  min-height: 100vh;
+}
+
+.workspace,
+.viewerColumn {
+  min-width: 0;
+}
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+}
+
+.topBar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px 28px 20px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(84, 180, 255, 0.08), transparent);
+}
+
+.topBar h1,
+.viewerHeader h2,
+.debugHeader h2,
+.emptyState h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  line-height: 1.15;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.reportMeta {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.reportMeta div,
+.sessionField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reportMeta span,
+.sessionField span {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.sessionField input {
+  width: 170px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.chatPanel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.messageStream {
+  flex: 1;
+  overflow: auto;
+  padding: 22px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.emptyState,
+.message {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.emptyState {
+  padding: 28px;
+  max-width: 760px;
+}
+
+.emptyState p:last-child {
+  margin-bottom: 0;
+  color: #d4e0eb;
+  max-width: 60ch;
+}
+
+.message {
+  max-width: 860px;
+}
+
+.message.user {
+  align-self: flex-end;
+  background: linear-gradient(180deg, rgba(84, 180, 255, 0.18), rgba(84, 180, 255, 0.08));
+}
+
+.messageLabel {
+  padding: 14px 18px 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.messageBody {
+  padding: 14px 18px 18px;
+}
+
+.messageBody p {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.65;
+}
+
+.citationsSection,
+.stepsSection {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.citationsSection h3,
+.stepsSection h3,
+.debugSection h3 {
+  margin: 0 0 12px;
+  font-size: 0.95rem;
+}
+
+.citationList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.citationCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 14px;
+  min-height: 150px;
+}
+
+.citationCard.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-soft);
+}
+
+.citationCard p {
+  color: #d8e4ef;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.citationMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.stepsList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stepRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  padding: 14px;
+  border-radius: 8px;
+}
+
+.stepRow p {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.stepPages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.pageChip {
+  border: 1px solid var(--border);
+  background: var(--panel-3);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 7px 10px;
+}
+
+.composer {
+  padding: 18px 28px 28px;
+  border-top: 1px solid var(--border);
+  background: rgba(10, 14, 18, 0.72);
+  backdrop-filter: blur(16px);
+}
+
+.composerLabel {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.composerRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+}
+
+.composer textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 96px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 14px;
+  line-height: 1.5;
+}
+
+.sendButton,
+.ghostButton,
+.iconButton {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.sendButton {
+  min-width: 110px;
+  align-self: stretch;
+  background: linear-gradient(180deg, var(--accent), #2e89d0);
+  border-color: rgba(84, 180, 255, 0.4);
+}
+
+.sendButton:disabled,
+.iconButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ghostButton,
+.iconButton {
+  padding: 10px 14px;
+}
+
+.errorText {
+  margin: 10px 0 0;
+  color: #ff8f8f;
+}
+
+.viewerColumn {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  background: #10161c;
+}
+
+.viewerShell {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.viewerHeader,
+.debugHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px 22px 18px;
+}
+
+.viewerControls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pageIndicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.pageIndicator input {
+  width: 76px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.viewerCanvas {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 22px 22px;
+}
+
+.viewerCanvas > div,
+.viewerCanvas .react-pdf__Document {
+  display: flex;
+  justify-content: center;
+}
+
+.viewerCanvas .react-pdf__Page {
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+
+.viewerEmpty,
+.debugEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.debugPanel {
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.debugBody {
+  padding: 0 22px 22px;
+}
+
+.debugSection + .debugSection {
+  margin-top: 18px;
+}
+
+.debugGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.debugGrid div {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.debugGrid dt {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.debugGrid dd {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.debugList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.debugList li {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.debugSection pre {
+  margin: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  background: #0d1117;
+  border-radius: 8px;
+  padding: 14px;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+@media (max-width: 1200px) {
+  .appShell {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace {
+    border-right: 0;
+  }
+
+  .viewerColumn {
+    border-top: 1px solid var(--border);
+  }
+}
+
+@media (max-width: 720px) {
+  .topBar,
+  .messageStream,
+  .composer,
+  .viewerHeader,
+  .viewerCanvas,
+  .debugHeader,
+  .debugBody {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .topBar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .composerRow {
+    grid-template-columns: 1fr;
+  }
+
+  .sendButton {
+    min-height: 48px;
+  }
+
+  .citationList {
+    grid-template-columns: 1fr;
+  }
+
+  .stepRow {
+    flex-direction: column;
+  }
+
+  .debugGrid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -56,6 +56,12 @@ qdrant_data/
 # Backend upload cache
 backend/storage/
 
+# Frontend / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.vercel/
+
 # LlamaIndex / general caches
 storage/
 .cache/

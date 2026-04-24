@@ -134,3 +134,12 @@ class DocumentProcessResponse(BaseModel):
     status: ProcessingStatus = "error"
     error: str | None = None
     errors: List[str] = Field(default_factory=list)
+
+
+class DocumentReportResponse(BaseModel):
+    processed_file_path: str = ""
+    pdf_name: str = ""
+    company_name: str = "unknown"
+    year: str = "unknown"
+    title: str = ""
+    pdf_url: str = ""

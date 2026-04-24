@@ -29,6 +29,12 @@ class Settings:
     gemini_retry_delay_sec: float = 1.0
     qdrant_url: str = "http://localhost:6333"
     qdrant_distance: str = "cosine"
+    frontend_origins: tuple[str, ...] = (
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    )
 
 
 @lru_cache(maxsize=1)
