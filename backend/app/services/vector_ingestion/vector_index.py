@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -116,6 +117,14 @@ def resolve_collection_name(
         )
     _, record = load_vector_index_record(settings, processed_file_path)
     return record.collection_name
+
+
+def build_collection_name(pdf_name: str) -> str:
+    stem = Path(pdf_name).with_suffix("").name
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", stem).strip("_").lower()
+    if not slug:
+        slug = "unknown_report"
+    return f"report_{slug}"
 
 
 def build_vector_index_record(

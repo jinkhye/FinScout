@@ -11,6 +11,7 @@ AgentAskStatus = Literal["success", "error"]
 
 
 class AgentAskRequest(BaseModel):
+    session_id: str = Field(..., min_length=1, examples=["demo-session-001"])
     processed_file_path: str = Field(
         ...,
         examples=[
@@ -27,7 +28,7 @@ class AgentAskRequest(BaseModel):
     top_k: int = Field(default=8, ge=1, le=20)
     rerank: bool = False
 
-    @field_validator("processed_file_path", "collection_name", "question")
+    @field_validator("session_id", "processed_file_path", "collection_name", "question")
     @classmethod
     def must_not_be_blank(cls, value: str | None) -> str | None:
         if value is None:
@@ -41,6 +42,7 @@ class AgentAskRequest(BaseModel):
         "json_schema_extra": {
             "examples": [
                 {
+                    "session_id": "demo-session-001",
                     "processed_file_path": "backend/storage/pipelines/99SMART-Annual-Report-2024/processed_99SMART-Annual-Report-2024.json",
                     "question": "What was the total revenue in 2024?",
                     "top_k": 8,
@@ -58,6 +60,8 @@ class AgentCitation(BaseModel):
 
 
 class AgentAskResponse(BaseModel):
+    session_id: str = ""
+    turn_index: int = 0
     question: str = ""
     answer: str = ""
     company_name: str = "unknown"

@@ -20,6 +20,7 @@ class QueryPlanRequest(BaseModel):
         ],
     )
     query: str = Field(..., min_length=1, examples=["wat was revnue?"])
+    conversation_context: str = ""
 
     @field_validator("processed_file_path", "query")
     @classmethod

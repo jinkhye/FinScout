@@ -4,6 +4,8 @@ from functools import lru_cache
 
 from .core.config import Settings, get_settings
 from .services.agent.agent_service import AgentService
+from .services.agent.conversation_memory_service import ConversationMemoryService
+from .services.agent.reranker_service import RerankerService
 from .services.document_processing.document_ingestion_service import (
     DocumentIngestionService,
 )
@@ -39,12 +41,24 @@ def get_query_context_service() -> QueryContextService:
 
 
 @lru_cache(maxsize=1)
+def get_conversation_memory_service() -> ConversationMemoryService:
+    return ConversationMemoryService(get_settings())
+
+
+@lru_cache(maxsize=1)
+def get_reranker_service() -> RerankerService:
+    return RerankerService(get_settings())
+
+
+@lru_cache(maxsize=1)
 def get_agent_service() -> AgentService:
     settings = get_settings()
     return AgentService(
         settings=settings,
         planner=get_query_planner_service(),
         context_loader=get_query_context_service(),
+        memory=get_conversation_memory_service(),
+        reranker=get_reranker_service(),
         vector_query=get_vector_query_service(),
     )
 

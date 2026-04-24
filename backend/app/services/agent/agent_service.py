@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from pathlib import Path
 from typing import Any, Dict, List
 
 from google.genai import types
@@ -17,32 +18,25 @@ from ...schemas.vector import (
     VectorQueryResult,
 )
 from ..common.gemini import get_gemini_client
-from ..common.prompts import build_answer_prompt, build_reranker_prompt
+from ..common.prompts import build_answer_prompt
 from ..query_planning.query_context_service import QueryContextService
 from ..query_planning.query_planner_service import QueryPlannerService
-from ..vector_ingestion.vector_index import resolve_collection_name
+from ..vector_ingestion.vector_index import (
+    build_collection_name,
+    load_processed_payload,
+)
+from .conversation_memory_service import ConversationMemoryService, ConversationTurn
+from .reranker_service import RerankerService
 from ..vector_ingestion.vector_query_service import VectorQueryService
 
-
-class RerankSelection(BaseModel):
-    rank: int = Field(..., ge=1)
-    page_number: int
-    section: str
-    reason: str = ""
-
-
-class RerankerOutput(BaseModel):
-    selected_results: List[RerankSelection] = Field(default_factory=list)
-
-
-class AnswerCitation(BaseModel):
+class AnswerCitation(types._common.BaseModel):
     page_number: int
     section: str
 
 
-class AnswerOutput(BaseModel):
-    answer: str = Field(...)
-    citations: List[AnswerCitation] = Field(default_factory=list)
+class AnswerOutput(types._common.BaseModel):
+    answer: str
+    citations: List[AnswerCitation] = []
 
 
 class AgentService:
@@ -51,11 +45,15 @@ class AgentService:
         settings: Settings,
         planner: QueryPlannerService,
         context_loader: QueryContextService,
+        memory: ConversationMemoryService,
+        reranker: RerankerService,
         vector_query: VectorQueryService,
     ) -> None:
         self._settings = settings
         self._planner = planner
         self._context_loader = context_loader
+        self._memory = memory
+        self._reranker = reranker
         self._vector_query = vector_query
 
     async def ask(
@@ -64,12 +62,48 @@ class AgentService:
         logger: logging.Logger,
     ) -> AgentAskResponse:
         try:
+            processed_path, processed_payload = load_processed_payload(
+                self._settings,
+                request.processed_file_path,
+            )
+            collection_name = self._session_collection_name(
+                request,
+                processed_path=str(processed_path),
+                processed_payload=processed_payload,
+            )
+            session = self._memory.get_or_create_session(
+                session_id=request.session_id,
+                processed_file_path=str(processed_path),
+                collection_name=collection_name,
+                company_name=str(processed_payload.get("company_name") or "unknown"),
+                year=str(processed_payload.get("year") or "unknown"),
+            )
+            turn_index = self._memory.next_turn_index(request.session_id)
+            recent_turns = self._memory.list_recent_turns(request.session_id, limit=3)
+            planner_conversation_context = self._planner_conversation_context(recent_turns)
+            answer_conversation_context = self._answer_conversation_context(recent_turns)
+            self._log_conversation_context(
+                logger=logger,
+                session_id=session.session_id,
+                turn_index=turn_index,
+                recent_turns=recent_turns,
+                planner_context=planner_conversation_context,
+                answer_context=answer_conversation_context,
+            )
+
             logger.info("Agent ask request for %s", request.processed_file_path)
+            logger.info("Session ID: %s", request.session_id)
+            logger.info("Turn index: %d", turn_index)
+            logger.info(
+                "Conversation history injected: %s",
+                "yes" if recent_turns else "no",
+            )
             logger.info("User question: %s", request.question)
             planner = await self._planner.plan(
                 QueryPlanRequest(
                     processed_file_path=request.processed_file_path,
                     query=request.question,
+                    conversation_context=planner_conversation_context,
                 ),
                 logger=logger,
             )
@@ -80,17 +114,21 @@ class AgentService:
             context_text, evidence, reranked = await self._build_context(
                 request,
                 planner,
+                collection_name,
                 logger,
             )
             prompt = build_answer_prompt(
                 question=request.question,
                 planner=planner,
                 context_text=context_text,
+                conversation_context=answer_conversation_context,
             )
             log_text_artifact(logger, "answer_prompt.md", prompt + "\n")
             answer_output = self._call_answer_model(prompt)
 
             response = AgentAskResponse(
+                session_id=request.session_id,
+                turn_index=turn_index,
                 question=request.question,
                 answer=answer_output.answer.strip(),
                 company_name=planner.company_name,
@@ -101,6 +139,17 @@ class AgentService:
                 planner=planner,
                 status="success",
                 errors=[],
+            )
+            self._memory.append_turn(
+                session_id=request.session_id,
+                turn_index=turn_index,
+                question=request.question,
+                optimized_query=planner.optimized_query,
+                selected_sections=list(planner.selected_sections),
+                route_strategy=planner.route_strategy,
+                reranked=reranked,
+                answer=response.answer,
+                citations=[citation.model_dump() for citation in response.citations],
             )
             log_json_artifact(logger, "answer_output.json", response.model_dump())
             logger.info("Answer preview: %s", self._answer_preview(response.answer))
@@ -114,6 +163,7 @@ class AgentService:
         self,
         request: AgentAskRequest,
         planner: QueryPlanResponse,
+        collection_name: str,
         logger: logging.Logger,
     ) -> tuple[str, List[Dict[str, Any]], bool]:
         if planner.route_strategy == "full_context":
@@ -143,11 +193,6 @@ class AgentService:
                 False,
             )
 
-        collection_name = resolve_collection_name(
-            self._settings,
-            request.processed_file_path,
-            request.collection_name,
-        )
         vector_response = await self._vector_query.query(
             VectorQueryRequest(
                 processed_file_path=request.processed_file_path,
@@ -165,7 +210,12 @@ class AgentService:
         results = vector_response.results
         reranked = False
         if request.rerank:
-            results, reranked = self._rerank_results(request, planner, results, logger)
+            results, reranked = self._reranker.rerank(
+                request=request,
+                planner=planner,
+                results=results,
+                logger=logger,
+            )
 
         return (
             self._context_from_results(results),
@@ -177,76 +227,6 @@ class AgentService:
         if not planner.vector_search_sections:
             return None
         return VectorQueryFilters(sections=planner.vector_search_sections)
-
-    def _rerank_results(
-        self,
-        request: AgentAskRequest,
-        planner: QueryPlanResponse,
-        results: List[VectorQueryResult],
-        logger: logging.Logger,
-    ) -> tuple[List[VectorQueryResult], bool]:
-        if not results:
-            return results, False
-
-        try:
-            logger.info("Reranker started with %d candidates", len(results))
-            prompt = build_reranker_prompt(
-                question=request.question,
-                planner=planner,
-                results=results,
-            )
-            log_text_artifact(logger, "reranker_prompt.md", prompt + "\n")
-            reranker_output = self._call_reranker_model(prompt)
-            log_json_artifact(
-                logger, "reranker_output.json", reranker_output.model_dump()
-            )
-
-            by_page = {result.page_number: result for result in results}
-            reranked: List[VectorQueryResult] = []
-            for selection in sorted(
-                reranker_output.selected_results, key=lambda item: item.rank
-            ):
-                result = by_page.get(selection.page_number)
-                if result is not None and result not in reranked:
-                    reranked.append(result)
-
-            selected_pages = [result.page_number for result in reranked]
-            logger.info("Reranker selected pages: %s", selected_pages)
-            if reranked:
-                return reranked, True
-            return results[:5], False
-        except Exception as exc:
-            logger.warning("Reranker failed, falling back to vector order: %s", exc)
-            log_json_artifact(
-                logger,
-                "reranker_output.json",
-                {
-                    "status": "error",
-                    "error": str(exc),
-                    "fallback": "vector_order",
-                },
-            )
-            return results, False
-
-    def _call_reranker_model(self, prompt: str) -> RerankerOutput:
-        client = get_gemini_client()
-        if client is None:
-            raise ValueError(
-                "GEMINI_API_KEY or GOOGLE_API_KEY must be set for reranking"
-            )
-
-        response = client.models.generate_content(
-            model=self._settings.gemini_model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_json_schema=RerankerOutput.model_json_schema(),
-            ),
-        )
-        response_text = (getattr(response, "text", None) or "").strip()
-        if not response_text:
-            raise ValueError("Gemini returned an empty reranker response")
-        return RerankerOutput.model_validate_json(response_text)
 
     def _call_answer_model(self, prompt: str) -> AnswerOutput:
         client = get_gemini_client()
@@ -376,6 +356,7 @@ class AgentService:
             },
         )
         return AgentAskResponse(
+            session_id=request.session_id,
             question=request.question,
             status="error",
             error=error,
@@ -399,3 +380,88 @@ class AgentService:
         if len(excerpt) <= limit:
             return excerpt
         return excerpt[: limit - 3].rstrip() + "..."
+
+    def _session_collection_name(
+        self,
+        request: AgentAskRequest,
+        *,
+        processed_path: str,
+        processed_payload: Dict[str, Any],
+    ) -> str:
+        if request.collection_name and request.collection_name.strip():
+            return request.collection_name.strip()
+        pdf_name = str(processed_payload.get("pdf_name") or Path(processed_path).stem)
+        return build_collection_name(pdf_name)
+
+    def _planner_conversation_context(self, turns: List[ConversationTurn]) -> str:
+        if not turns:
+            return ""
+
+        parts: List[str] = []
+        for turn in turns:
+            parts.append(f"Turn {turn.turn_index}")
+            parts.append(f"User question: {turn.question}")
+            parts.append(f"Assistant answer summary: {self._truncate(turn.answer, 220)}")
+            parts.append("")
+        return "\n".join(parts).strip()
+
+    def _answer_conversation_context(self, turns: List[ConversationTurn]) -> str:
+        if not turns:
+            return ""
+
+        parts: List[str] = []
+        for turn in turns:
+            citations = ", ".join(
+                f"p.{citation.get('page_number')} ({citation.get('section')})"
+                for citation in turn.citations
+                if citation.get("page_number") is not None
+            )
+            parts.append(f"Turn {turn.turn_index}")
+            parts.append(f"User question: {turn.question}")
+            parts.append(f"Assistant answer summary: {self._truncate(turn.answer, 260)}")
+            if citations:
+                parts.append(f"Citations: {citations}")
+            parts.append("")
+        return "\n".join(parts).strip()
+
+    def _log_conversation_context(
+        self,
+        *,
+        logger: logging.Logger,
+        session_id: str,
+        turn_index: int,
+        recent_turns: List[ConversationTurn],
+        planner_context: str,
+        answer_context: str,
+    ) -> None:
+        log_json_artifact(
+            logger,
+            "conversation_context.json",
+            {
+                "session_id": session_id,
+                "turn_index": turn_index,
+                "recent_turns_count": len(recent_turns),
+                "recent_turns": [
+                    {
+                        "turn_index": turn.turn_index,
+                        "question": turn.question,
+                        "optimized_query": turn.optimized_query,
+                        "selected_sections": turn.selected_sections,
+                        "route_strategy": turn.route_strategy,
+                        "reranked": turn.reranked,
+                        "answer_summary": self._truncate(turn.answer, 260),
+                        "citations": turn.citations,
+                        "created_at": turn.created_at,
+                    }
+                    for turn in recent_turns
+                ],
+                "planner_context": planner_context,
+                "answer_context": answer_context,
+            },
+        )
+
+    def _truncate(self, text: str, limit: int) -> str:
+        normalized = " ".join(str(text).split())
+        if len(normalized) <= limit:
+            return normalized
+        return normalized[: limit - 3].rstrip() + "..."

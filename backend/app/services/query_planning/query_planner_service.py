@@ -78,6 +78,7 @@ class QueryPlannerService:
             company_name=company_name,
             year=year,
             available_sections=available_sections,
+            conversation_context=request.conversation_context,
         )
         log_text_artifact(logger, "planner_prompt.md", prompt + "\n")
 

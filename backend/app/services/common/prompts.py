@@ -13,8 +13,18 @@ def build_query_planner_prompt(
     company_name: str,
     year: str,
     available_sections: Sequence[str],
+    conversation_context: str = "",
 ) -> str:
     sections = ", ".join(available_sections)
+    conversation_block = ""
+    if conversation_context.strip():
+        conversation_block = dedent(
+            f"""
+
+            Conversation context:
+            {conversation_context}
+            """
+        )
     return dedent(
         f"""
         You are the query planner for an annual-report RAG system.
@@ -26,6 +36,7 @@ def build_query_planner_prompt(
 
         User query:
         {query}
+        {conversation_block}
 
         Available section labels:
         {sections}
@@ -37,6 +48,8 @@ def build_query_planner_prompt(
         4. If the query is broad, unclear, or spans the whole annual report, return selected_sections=[].
         5. If the query clearly maps to one or more section labels, return only those labels in selected_sections.
         6. Use only the available section labels. Do not invent labels.
+        7. Use the conversation context only to resolve references such as "that", "the same company", or "what about last year".
+        8. Do not let conversation context override the current report metadata.
 
         Section guidance:
         - company_overview: corporate profile, milestones, directors, business overview, outlets, strategy
@@ -105,7 +118,17 @@ def build_answer_prompt(
     question: str,
     planner: QueryPlanResponse,
     context_text: str,
+    conversation_context: str = "",
 ) -> str:
+    conversation_block = ""
+    if conversation_context.strip():
+        conversation_block = dedent(
+            f"""
+
+            Conversation context:
+            {conversation_context}
+            """
+        )
     return dedent(
         f"""
         You are FinScout, an annual-report question answering assistant.
@@ -117,6 +140,7 @@ def build_answer_prompt(
 
         User question:
         {question}
+        {conversation_block}
 
         Instructions:
         - Answer only using the supplied context. Do not use prior knowledge.
@@ -126,6 +150,7 @@ def build_answer_prompt(
         - Cite the page numbers that support your answer in the citations field.
         - Do not mention retrieval internals, vector search, or reranking.
         - Do not speculate beyond what the context states.
+        - Use conversation context only for continuity. The supplied context for this turn remains the authoritative source.
 
         Supplied context:
         {context_text}
