@@ -316,3 +316,89 @@ def build_direct_reply_prompt(
         - Return an empty citations list.
         """
     ).strip()
+
+
+def build_agent_ask_judge_prompt(
+    *,
+    question: str,
+    expected_route_strategy: str | None,
+    expected_pages: Sequence[int],
+    expected_facts: Sequence[str],
+    notes: str,
+    answer: str,
+    citations: Sequence[dict],
+    route_strategy: str | None,
+    executed_steps: Sequence[dict],
+) -> str:
+    expected_pages_text = (
+        ", ".join(str(page) for page in expected_pages)
+        if expected_pages
+        else "No specific pages required."
+    )
+    expected_facts_text = (
+        "\n".join(f"- {fact}" for fact in expected_facts)
+        if expected_facts
+        else "- No explicit fact list provided."
+    )
+    citations_text = (
+        "\n".join(
+            f"- page={citation.get('page_number')} section={citation.get('section')} excerpt={citation.get('excerpt', '')}"
+            for citation in citations
+        )
+        if citations
+        else "- No citations returned."
+    )
+    steps_text = (
+        "\n".join(
+            f"- step={step.get('step_index')} route={step.get('route_strategy')} sections={step.get('selected_sections', [])} query={step.get('query', '')}"
+            for step in executed_steps
+        )
+        if executed_steps
+        else "- No executed steps returned."
+    )
+    expected_route_text = expected_route_strategy or "No strict route requirement."
+    notes_text = notes.strip() or "No additional rubric hints."
+
+    return dedent(
+        f"""
+        You are judging the quality of an annual-report QA system answer.
+
+        Your task is to judge factual correctness and grounding, not wording similarity.
+
+        User question:
+        {question}
+
+        Gold expectations:
+        - Expected route strategy: {expected_route_text}
+        - Expected supporting pages: {expected_pages_text}
+        - Expected facts:
+        {expected_facts_text}
+        - Notes:
+        {notes_text}
+
+        System output:
+        - Actual route strategy: {route_strategy}
+        - Executed steps:
+        {steps_text}
+        - Answer:
+        {answer}
+        - Citations:
+        {citations_text}
+
+        Judge on these dimensions:
+        1. correctness: does the answer contain the expected facts and avoid material errors?
+        2. grounding: is the answer supported by the cited pages and likely evidence?
+        3. citation_quality: are the citations useful and relevant to the answer?
+        4. route_quality: is the chosen route reasonable for the question?
+        5. hallucination: did the system invent unsupported claims?
+
+        Scoring rules:
+        - Use score from 0 to 10.
+        - Return pass=true only when the answer is materially correct and grounded.
+        - Prefer semantic judgment over exact phrasing.
+        - Missing one supporting page is acceptable if the answer is still well-grounded elsewhere.
+        - Fail when a key expected fact is wrong, missing, or unsupported.
+
+        Return structured JSON only.
+        """
+    ).strip()

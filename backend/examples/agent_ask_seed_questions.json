@@ -1,0 +1,80 @@
+{
+  "processed_file_path": "backend/storage/pipelines/99SMART-Annual-Report-2024/processed_99SMART-Annual-Report-2024.json",
+  "questions": [
+    {
+      "id": "revenue_2024",
+      "question": "What was the total revenue in 2024?",
+      "notes": "Numeric fact lookup from the income statement."
+    },
+    {
+      "id": "profit_after_tax_2024",
+      "question": "What was the profit for the financial year in 2024?",
+      "notes": "Numeric fact lookup from the income statement."
+    },
+    {
+      "id": "auditor_opinion",
+      "question": "What audit opinion did the independent auditors give?",
+      "notes": "Auditor report question."
+    },
+    {
+      "id": "auditor_firm",
+      "question": "Who was the external auditor?",
+      "notes": "Auditor identity question."
+    },
+    {
+      "id": "cash_operating_2024",
+      "question": "What was the net cash generated from operating activities in 2024?",
+      "notes": "Cash flow statement fact lookup."
+    },
+    {
+      "id": "total_assets_2024",
+      "question": "What were the total assets in 2024?",
+      "notes": "Balance sheet fact lookup."
+    },
+    {
+      "id": "outlet_count",
+      "question": "How many stores did the group operate in Malaysia?",
+      "notes": "Company overview / narrative retrieval."
+    },
+    {
+      "id": "management_growth_driver",
+      "question": "What does management attribute the group's growth to?",
+      "notes": "Narrative management explanation."
+    },
+    {
+      "id": "multi_step_profitability_why",
+      "question": "How did profitability change and what does management attribute it to?",
+      "notes": "Multi-step compare-and-explain query."
+    },
+    {
+      "id": "company_structure",
+      "question": "What subsidiaries are shown in the corporate structure?",
+      "notes": "Diagram / corporate structure question."
+    },
+    {
+      "id": "not_found_carbon_target_2030",
+      "question": "What is the group's 2030 carbon emissions reduction target?",
+      "notes": "Unsupported sustainability target question. Should say the report does not specify it."
+    },
+    {
+      "id": "not_found_cfo_salary",
+      "question": "What was the CFO's salary in 2024?",
+      "notes": "Unsupported compensation detail. Should not invent a salary."
+    },
+    {
+      "id": "not_found_revenue_2025_forecast",
+      "question": "What will revenue be in 2025?",
+      "notes": "Unsupported future forecast. Should not guess."
+    },
+    {
+      "id": "direct_reply_hello",
+      "question": "hello",
+      "notes": "Should stay in direct-reply path."
+    },
+    {
+      "id": "direct_reply_thanks",
+      "question": "thanks",
+      "notes": "Should stay in direct-reply path."
+    }
+  ]
+}

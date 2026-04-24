@@ -107,5 +107,7 @@ async def get_report_pdf(
     return FileResponse(
         path=pdf_path,
         media_type="application/pdf",
-        filename=pdf_name,
+        headers={
+            "Content-Disposition": f'inline; filename="{pdf_name}"',
+        },
     )

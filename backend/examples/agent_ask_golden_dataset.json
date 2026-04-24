@@ -1,0 +1,139 @@
+{
+  "processed_file_path": "backend/storage/pipelines/99SMART-Annual-Report-2024/processed_99SMART-Annual-Report-2024.json",
+  "cases": [
+    {
+      "id": "revenue_2024",
+      "question": "What was the total revenue in 2024?",
+      "expected_route_strategy": "full_context",
+      "expected_pages": [149],
+      "expected_facts": ["RM 9,981,642,000"],
+      "notes": "Answer should use the income statement and cite the income statement page."
+    },
+    {
+      "id": "profit_after_tax_2024",
+      "question": "What was the profit for the financial year in 2024?",
+      "expected_route_strategy": "full_context",
+      "expected_pages": [149],
+      "expected_facts": ["RM 490,265,000"],
+      "notes": "Look for the Group profit for the financial year / profit after taxation figure for FY2024."
+    },
+    {
+      "id": "auditor_opinion",
+      "question": "What audit opinion did the independent auditors give?",
+      "expected_route_strategy": "full_context",
+      "expected_pages": [143],
+      "expected_facts": ["true and fair view", "In our opinion"],
+      "notes": "The answer should reflect the unqualified opinion language."
+    },
+    {
+      "id": "auditor_firm",
+      "question": "Who was the external auditor?",
+      "expected_route_strategy": "full_context",
+      "expected_pages": [6, 147],
+      "expected_facts": ["Crowe Malaysia PLT", "Ong Beng Chooi"],
+      "notes": "The answer should identify the external audit firm. Page 6 lists the auditors in corporate information, while page 147 carries the audit report signature block."
+    },
+    {
+      "id": "cash_operating_2024",
+      "question": "What was the net cash generated from operating activities in 2024?",
+      "expected_route_strategy": "full_context",
+      "expected_pages": [153],
+      "expected_facts": ["RM 488,528,000"],
+      "notes": "Use the net cash generated from operating activities line in the cash flow statement, not the earlier cash generated from operations subtotal."
+    },
+    {
+      "id": "total_assets_2024",
+      "question": "What were the total assets in 2024?",
+      "expected_route_strategy": "full_context",
+      "expected_pages": [148],
+      "expected_facts": ["RM 3,561,150,000"],
+      "notes": "Balance sheet / financial position fact lookup for the Group's total assets at FY2024."
+    },
+    {
+      "id": "outlet_count",
+      "question": "How many stores did the group operate in Malaysia?",
+      "expected_route_strategy": "vector_search",
+      "expected_pages": [3, 25, 46],
+      "expected_facts": ["2,778"],
+      "notes": "Narrative/company overview style answer. In this report, the grounded cited count is 2,778 outlets in Malaysia as at 31 December 2024, while page 3 uses a looser '2,800+' marketing summary."
+    },
+    {
+      "id": "management_growth_driver",
+      "question": "What does management attribute the group's growth to?",
+      "expected_route_strategy": "vector_search",
+      "expected_pages": [24, 25, 31, 32],
+      "expected_facts": ["network expansion", "new store openings", "same-store sales growth"],
+      "notes": "Narrative explanation question. Judge semantically, not by exact wording."
+    },
+    {
+      "id": "multi_step_profitability_why",
+      "question": "How did profitability change and what does management attribute it to?",
+      "expected_route_strategy": "full_context",
+      "expected_pages": [149, 24, 25, 31, 32],
+      "expected_facts": ["profit", "management", "growth"],
+      "notes": "Multi-step question. Judge on synthesis, grounded explanation, and useful citations."
+    },
+    {
+      "id": "company_structure",
+      "question": "What subsidiaries are shown in the corporate structure?",
+      "expected_route_strategy": "vector_search",
+      "expected_pages": [7],
+      "expected_facts": [
+        "99 Speed Mart Sdn Bhd",
+        "99 Speed Mart (East Malaysia) Sdn Bhd",
+        "Yiwu J-Jade Trading Co., Ltd",
+        "Yiwu Speed Mart Import & Export Co., Ltd"
+      ],
+      "notes": "The answer should identify the entities shown in the corporate structure diagram."
+    },
+    {
+      "id": "not_found_carbon_target_2030",
+      "question": "What is the group's 2030 carbon emissions reduction target?",
+      "expected_route_strategy": "vector_search",
+      "expected_pages": [],
+      "expected_facts": [
+        "does not contain enough information",
+        "does not specify a 2030 carbon emissions reduction target"
+      ],
+      "notes": "The report discusses sustainability initiatives and tracked emissions, but it does not state a specific 2030 carbon reduction target. The answer should explicitly say the information is not available in the supplied report context and should not invent a target."
+    },
+    {
+      "id": "not_found_cfo_salary",
+      "question": "What was the CFO's salary in 2024?",
+      "expected_route_strategy": "vector_search",
+      "expected_pages": [],
+      "expected_facts": [
+        "does not contain enough information",
+        "does not disclose the CFO's salary"
+      ],
+      "notes": "The annual report includes management profiles but does not disclose the CFO's salary in the processed report content used here. The answer should not invent a number."
+    },
+    {
+      "id": "not_found_revenue_2025_forecast",
+      "question": "What will revenue be in 2025?",
+      "expected_route_strategy": "vector_search",
+      "expected_pages": [],
+      "expected_facts": [
+        "does not contain enough information",
+        "does not provide a 2025 revenue forecast"
+      ],
+      "notes": "The report may discuss FY2025 plans and capex, but it does not provide a concrete 2025 revenue forecast. The answer should avoid forecasting or guessing."
+    },
+    {
+      "id": "direct_reply_hello",
+      "question": "hello",
+      "expected_route_strategy": null,
+      "expected_pages": [],
+      "expected_facts": [],
+      "notes": "This should be treated as a direct reply with no citations."
+    },
+    {
+      "id": "direct_reply_thanks",
+      "question": "thanks",
+      "expected_route_strategy": null,
+      "expected_pages": [],
+      "expected_facts": [],
+      "notes": "This should be treated as a direct reply with no citations."
+    }
+  ]
+}
