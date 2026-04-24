@@ -229,6 +229,56 @@ def build_answer_prompt(
     ).strip()
 
 
+def build_multi_step_answer_prompt(
+    *,
+    question: str,
+    planner: QueryPlanResponse,
+    executed_steps_summary: str,
+    context_text: str,
+    conversation_context: str = "",
+) -> str:
+    conversation_block = ""
+    if conversation_context.strip():
+        conversation_block = dedent(
+            f"""
+
+            Conversation context:
+            {conversation_context}
+            """
+        )
+    return dedent(
+        f"""
+        You are FinScout, an annual-report question answering assistant.
+
+        Report context:
+        - Company: {planner.company_name}
+        - Year: {planner.year}
+        - Document: annual report
+
+        User question:
+        {question}
+        {conversation_block}
+
+        Executed retrieval steps:
+        {executed_steps_summary}
+
+        Instructions:
+        - Answer the full user question by synthesizing across all supplied step evidence.
+        - Answer only using the supplied context. Do not use prior knowledge.
+        - If the supplied context does not contain enough information to answer fully, say so explicitly.
+        - Always include exact figures, percentages, and currencies when available.
+        - If financial tables are in RM'000, convert figures to their true value in your answer (e.g. 100,000 in RM'000 = RM100,000,000).
+        - Connect evidence across sections when helpful, but do not speculate beyond what the context states.
+        - Cite the page numbers that support your answer in the citations field.
+        - Do not mention retrieval internals, vector search, reranking, or step execution mechanics.
+        - Use conversation context only for continuity. The supplied context for this turn remains the authoritative source.
+
+        Supplied context:
+        {context_text}
+        """
+    ).strip()
+
+
 def build_direct_reply_prompt(
     *,
     question: str,

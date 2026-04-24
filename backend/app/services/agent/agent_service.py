@@ -11,15 +11,29 @@ from pydantic import BaseModel, Field
 
 from ...core.config import Settings
 from ...core.logger import log_json_artifact, log_text_artifact
-from ...schemas.agent import AgentAskRequest, AgentAskResponse, AgentCitation
-from ...schemas.query import QueryContextRequest, QueryPlanRequest, QueryPlanResponse
+from ...schemas.agent import (
+    AgentAskRequest,
+    AgentAskResponse,
+    AgentCitation,
+    AgentExecutedStep,
+)
+from ...schemas.query import (
+    QueryContextRequest,
+    QueryPlanRequest,
+    QueryPlanResponse,
+    QueryPlannerSubQuery,
+)
 from ...schemas.vector import (
     VectorQueryFilters,
     VectorQueryRequest,
     VectorQueryResult,
 )
 from ..common.gemini import get_gemini_client
-from ..common.prompts import build_answer_prompt, build_direct_reply_prompt
+from ..common.prompts import (
+    build_answer_prompt,
+    build_direct_reply_prompt,
+    build_multi_step_answer_prompt,
+)
 from ..query_planning.query_context_service import QueryContextService
 from ..query_planning.query_planner_service import QueryPlannerService
 from ..vector_ingestion.vector_index import (
@@ -43,9 +57,12 @@ class AnswerOutput(BaseModel):
 
 
 @dataclass
-class ContextBuildResult:
+class StepExecutionResult:
+    step_index: int
+    goal: str
     context_text: str
     evidence: List[Dict[str, Any]]
+    route_strategy: str | None
     selected_sections: List[str]
     reranked: bool
     retried: bool
@@ -146,26 +163,50 @@ class AgentService:
                 final_query = planner.optimized_query
                 retry_reason = None
                 selected_sections_for_memory: List[str] = []
+                executed_steps: List[AgentExecutedStep] = []
+                route_strategy = None
             else:
-                context_result = await self._build_context(
+                step_results = await self._execute_planned_steps(
                     request,
                     planner,
                     collection_name,
                     logger,
                 )
-                context_text = context_result.context_text
-                evidence = context_result.evidence
-                reranked = context_result.reranked
-                retried = context_result.retried
-                final_query = context_result.final_query
-                retry_reason = context_result.retry_reason
-                selected_sections_for_memory = context_result.selected_sections
-                prompt = build_answer_prompt(
-                    question=request.question,
-                    planner=planner,
-                    context_text=context_text,
-                    conversation_context=answer_conversation_context,
+                context_text = self._combined_context_from_steps(step_results)
+                evidence = self._merged_evidence(step_results)
+                executed_steps = self._executed_steps_response(step_results)
+                reranked = any(step.reranked for step in step_results)
+                retried = any(step.retried for step in step_results)
+                final_query = step_results[0].final_query if step_results else planner.optimized_query
+                retry_reason = next(
+                    (step.retry_reason for step in step_results if step.retry_reason),
+                    None,
                 )
+                selected_sections_for_memory = self._merged_selected_sections(step_results)
+                route_strategy = step_results[0].route_strategy if step_results else planner.route_strategy
+                step_summary = self._executed_steps_summary(step_results)
+                log_json_artifact(
+                    logger,
+                    "executed_steps.json",
+                    {
+                        "executed_steps": [step.model_dump() for step in executed_steps],
+                    },
+                )
+                if len(step_results) > 1:
+                    prompt = build_multi_step_answer_prompt(
+                        question=request.question,
+                        planner=planner,
+                        executed_steps_summary=step_summary,
+                        context_text=context_text,
+                        conversation_context=answer_conversation_context,
+                    )
+                else:
+                    prompt = build_answer_prompt(
+                        question=request.question,
+                        planner=planner,
+                        context_text=context_text,
+                        conversation_context=answer_conversation_context,
+                    )
 
             log_text_artifact(logger, "answer_prompt.md", prompt + "\n")
             answer_output = self._call_answer_model(prompt)
@@ -177,11 +218,12 @@ class AgentService:
                 answer=answer_output.answer.strip(),
                 company_name=planner.company_name,
                 year=planner.year,
-                route_strategy=planner.route_strategy,
+                route_strategy=route_strategy,
                 reranked=reranked,
                 retried=retried,
                 final_query=final_query,
                 retry_reason=retry_reason,
+                executed_steps=executed_steps,
                 citations=(
                     []
                     if planner.intent == "direct_reply"
@@ -198,7 +240,7 @@ class AgentService:
                 intent=planner.intent,
                 optimized_query=final_query,
                 selected_sections=selected_sections_for_memory,
-                route_strategy=planner.route_strategy or "",
+                route_strategy=route_strategy or "",
                 reranked=reranked,
                 answer=response.answer,
                 citations=[citation.model_dump() for citation in response.citations],
@@ -211,18 +253,64 @@ class AgentService:
             logger.error("Agent ask failed: %s", exc)
             return self._error_response(request, exc, logger)
 
-    async def _build_context(
+    async def _execute_planned_steps(
         self,
         request: AgentAskRequest,
         planner: QueryPlanResponse,
         collection_name: str,
         logger: logging.Logger,
-    ) -> ContextBuildResult:
-        if planner.route_strategy == "full_context":
+    ) -> List[StepExecutionResult]:
+        planned_steps = list(planner.sub_queries)
+        if not planned_steps:
+            planned_steps = [
+                QueryPlannerSubQuery(
+                    query=planner.optimized_query,
+                    selected_sections=list(planner.selected_sections),
+                    route_strategy=planner.route_strategy,
+                    vector_search_sections=list(planner.vector_search_sections),
+                    full_context_sections=list(planner.full_context_sections),
+                    goal="Answer the user's question.",
+                )
+            ]
+
+        executed_steps: List[StepExecutionResult] = []
+        for index, step in enumerate(planned_steps[:2], start=1):
+            logger.info(
+                "Executing step %d/%d with route=%s query=%s",
+                index,
+                min(len(planned_steps), 2),
+                step.route_strategy,
+                step.query,
+            )
+            executed_steps.append(
+                await self._execute_step(
+                    step_index=index,
+                    request=request,
+                    planner=planner,
+                    sub_query=step,
+                    collection_name=collection_name,
+                    logger=logger,
+                )
+            )
+        return executed_steps
+
+    async def _execute_step(
+        self,
+        *,
+        step_index: int,
+        request: AgentAskRequest,
+        planner: QueryPlanResponse,
+        sub_query: QueryPlannerSubQuery,
+        collection_name: str,
+        logger: logging.Logger,
+    ) -> StepExecutionResult:
+        artifact_prefix = f"step_{step_index}_"
+
+        if sub_query.route_strategy == "full_context":
             context_response = await self._context_loader.load_context(
                 QueryContextRequest(
                     processed_file_path=request.processed_file_path,
-                    sections=planner.full_context_sections,
+                    sections=sub_query.full_context_sections,
                 ),
                 logger=logger,
             )
@@ -232,27 +320,30 @@ class AgentService:
                 )
 
             log_json_artifact(
-                logger, "context_output.json", context_response.model_dump()
+                logger, f"{artifact_prefix}context_output.json", context_response.model_dump()
             )
-            return ContextBuildResult(
+            return StepExecutionResult(
+                step_index=step_index,
+                goal=sub_query.goal,
                 context_text=context_response.context_text,
                 evidence=self._evidence_from_context(
                     context_response.context_text,
                     (
-                        planner.full_context_sections[0]
-                        if planner.full_context_sections
+                        sub_query.full_context_sections[0]
+                        if sub_query.full_context_sections
                         else ""
                     ),
                 ),
-                selected_sections=list(planner.full_context_sections),
+                route_strategy=sub_query.route_strategy,
+                selected_sections=list(sub_query.full_context_sections),
                 reranked=False,
                 retried=False,
-                final_query=planner.optimized_query,
+                final_query=sub_query.query,
                 retry_reason=None,
             )
 
-        current_query = planner.optimized_query
-        current_sections = list(planner.vector_search_sections)
+        current_query = sub_query.query
+        current_sections = list(sub_query.vector_search_sections)
         vector_response = await self._vector_query.query(
             self._vector_query_request(
                 request=request,
@@ -267,7 +358,7 @@ class AgentService:
 
         self._log_retrieval_artifact(
             logger=logger,
-            artifact_name="initial_retrieval_output.json",
+            artifact_name=f"{artifact_prefix}initial_retrieval_output.json",
             query=current_query,
             sections=current_sections,
             response=vector_response.model_dump(),
@@ -277,6 +368,7 @@ class AgentService:
             planner=planner,
             results=vector_response.results,
             logger=logger,
+            artifact_prefix=artifact_prefix,
         )
         logger.info(
             "Initial retrieval judged %s",
@@ -332,7 +424,7 @@ class AgentService:
                     planner=planner,
                     results=retry_response.results,
                     logger=logger,
-                    artifact_prefix="retry_",
+                    artifact_prefix=f"{artifact_prefix}retry_",
                 )
                 final_results = retry_rerank.results
                 reranked = retry_rerank.reranked
@@ -348,21 +440,91 @@ class AgentService:
 
         self._log_retrieval_artifact(
             logger=logger,
-            artifact_name="final_retrieval_output.json",
+            artifact_name=f"{artifact_prefix}final_retrieval_output.json",
             query=final_query,
             sections=final_sections,
             response=final_response_dump,
         )
 
-        return ContextBuildResult(
+        return StepExecutionResult(
+            step_index=step_index,
+            goal=sub_query.goal,
             context_text=self._context_from_results(final_results),
             evidence=self._evidence_from_results(final_results),
+            route_strategy=sub_query.route_strategy,
             selected_sections=final_sections,
             reranked=reranked,
             retried=retried,
             final_query=final_query,
             retry_reason=retry_reason,
         )
+
+    def _combined_context_from_steps(self, steps: List[StepExecutionResult]) -> str:
+        parts: List[str] = []
+        for step in steps:
+            parts.append(
+                f"===== Step {step.step_index}: {step.goal or step.final_query} ====="
+            )
+            parts.append(step.context_text.strip())
+            parts.append("")
+        return "\n".join(part for part in parts if part).strip() + "\n"
+
+    def _merged_evidence(self, steps: List[StepExecutionResult]) -> List[Dict[str, Any]]:
+        evidence: List[Dict[str, Any]] = []
+        for step in steps:
+            evidence.extend(step.evidence)
+        return evidence
+
+    def _merged_selected_sections(self, steps: List[StepExecutionResult]) -> List[str]:
+        merged: List[str] = []
+        for step in steps:
+            for section in step.selected_sections:
+                if section not in merged:
+                    merged.append(section)
+        return merged
+
+    def _executed_steps_response(
+        self, steps: List[StepExecutionResult]
+    ) -> List[AgentExecutedStep]:
+        return [
+            AgentExecutedStep(
+                step_index=step.step_index,
+                goal=step.goal,
+                query=step.final_query,
+                route_strategy=step.route_strategy,
+                selected_sections=step.selected_sections,
+                reranked=step.reranked,
+                retried=step.retried,
+                cited_pages=[
+                    int(item["page_number"])
+                    for item in step.evidence
+                    if item.get("page_number") is not None
+                ],
+            )
+            for step in steps
+        ]
+
+    def _executed_steps_summary(self, steps: List[StepExecutionResult]) -> str:
+        parts: List[str] = []
+        for step in steps:
+            pages = ", ".join(
+                f"p.{item['page_number']}"
+                for item in step.evidence
+                if item.get("page_number") is not None
+            )
+            parts.append(f"Step {step.step_index}")
+            if step.goal:
+                parts.append(f"Goal: {step.goal}")
+            parts.append(f"Query: {step.final_query}")
+            parts.append(f"Route: {step.route_strategy}")
+            parts.append(
+                "Selected sections: "
+                + (", ".join(step.selected_sections) if step.selected_sections else "all sections")
+            )
+            if pages:
+                parts.append(f"Evidence pages: {pages}")
+            parts.append("")
+        return "\n".join(parts).strip()
 
     def _vector_query_request(
         self,

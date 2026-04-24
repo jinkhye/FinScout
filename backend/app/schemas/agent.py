@@ -57,6 +57,17 @@ class AgentCitation(BaseModel):
     excerpt: str = ""
 
 
+class AgentExecutedStep(BaseModel):
+    step_index: int
+    goal: str = ""
+    query: str = ""
+    route_strategy: RouteStrategy | None = None
+    selected_sections: List[str] = Field(default_factory=list)
+    reranked: bool = False
+    retried: bool = False
+    cited_pages: List[int] = Field(default_factory=list)
+
+
 class AgentAskResponse(BaseModel):
     session_id: str = ""
     turn_index: int = 0
@@ -69,6 +80,7 @@ class AgentAskResponse(BaseModel):
     retried: bool = False
     final_query: str = ""
     retry_reason: str | None = None
+    executed_steps: List[AgentExecutedStep] = Field(default_factory=list)
     citations: List[AgentCitation] = Field(default_factory=list)
     planner: QueryPlanResponse | None = None
     status: AgentAskStatus = "error"
