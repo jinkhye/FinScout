@@ -26,7 +26,6 @@ class AgentAskRequest(BaseModel):
         ..., min_length=1, examples=["What was the total revenue in 2024?"]
     )
     top_k: int = Field(default=8, ge=1, le=20)
-    rerank: bool = False
 
     @field_validator("session_id", "processed_file_path", "collection_name", "question")
     @classmethod
@@ -46,7 +45,6 @@ class AgentAskRequest(BaseModel):
                     "processed_file_path": "backend/storage/pipelines/99SMART-Annual-Report-2024/processed_99SMART-Annual-Report-2024.json",
                     "question": "What was the total revenue in 2024?",
                     "top_k": 8,
-                    "rerank": False,
                 }
             ]
         }
@@ -68,6 +66,9 @@ class AgentAskResponse(BaseModel):
     year: str = "unknown"
     route_strategy: RouteStrategy | None = None
     reranked: bool = False
+    retried: bool = False
+    final_query: str = ""
+    retry_reason: str | None = None
     citations: List[AgentCitation] = Field(default_factory=list)
     planner: QueryPlanResponse | None = None
     status: AgentAskStatus = "error"

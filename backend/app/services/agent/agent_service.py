@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -26,6 +27,7 @@ from ..vector_ingestion.vector_index import (
     load_processed_payload,
 )
 from .conversation_memory_service import ConversationMemoryService, ConversationTurn
+from .retrieval_repair_service import RetrievalRepairService
 from .reranker_service import RerankerService
 from ..vector_ingestion.vector_query_service import VectorQueryService
 
@@ -40,6 +42,17 @@ class AnswerOutput(BaseModel):
     citations: List[AnswerCitation] = Field(default_factory=list)
 
 
+@dataclass
+class ContextBuildResult:
+    context_text: str
+    evidence: List[Dict[str, Any]]
+    selected_sections: List[str]
+    reranked: bool
+    retried: bool
+    final_query: str
+    retry_reason: str | None
+
+
 class AgentService:
     def __init__(
         self,
@@ -47,6 +60,7 @@ class AgentService:
         planner: QueryPlannerService,
         context_loader: QueryContextService,
         memory: ConversationMemoryService,
+        repair: RetrievalRepairService,
         reranker: RerankerService,
         vector_query: VectorQueryService,
     ) -> None:
@@ -54,6 +68,7 @@ class AgentService:
         self._planner = planner
         self._context_loader = context_loader
         self._memory = memory
+        self._repair = repair
         self._reranker = reranker
         self._vector_query = vector_query
 
@@ -127,13 +142,24 @@ class AgentService:
                 )
                 evidence: List[Dict[str, Any]] = []
                 reranked = False
+                retried = False
+                final_query = planner.optimized_query
+                retry_reason = None
+                selected_sections_for_memory: List[str] = []
             else:
-                context_text, evidence, reranked = await self._build_context(
+                context_result = await self._build_context(
                     request,
                     planner,
                     collection_name,
                     logger,
                 )
+                context_text = context_result.context_text
+                evidence = context_result.evidence
+                reranked = context_result.reranked
+                retried = context_result.retried
+                final_query = context_result.final_query
+                retry_reason = context_result.retry_reason
+                selected_sections_for_memory = context_result.selected_sections
                 prompt = build_answer_prompt(
                     question=request.question,
                     planner=planner,
@@ -153,6 +179,9 @@ class AgentService:
                 year=planner.year,
                 route_strategy=planner.route_strategy,
                 reranked=reranked,
+                retried=retried,
+                final_query=final_query,
+                retry_reason=retry_reason,
                 citations=(
                     []
                     if planner.intent == "direct_reply"
@@ -167,8 +196,8 @@ class AgentService:
                 turn_index=turn_index,
                 question=request.question,
                 intent=planner.intent,
-                optimized_query=planner.optimized_query,
-                selected_sections=list(planner.selected_sections),
+                optimized_query=final_query,
+                selected_sections=selected_sections_for_memory,
                 route_strategy=planner.route_strategy or "",
                 reranked=reranked,
                 answer=response.answer,
@@ -188,7 +217,7 @@ class AgentService:
         planner: QueryPlanResponse,
         collection_name: str,
         logger: logging.Logger,
-    ) -> tuple[str, List[Dict[str, Any]], bool]:
+    ) -> ContextBuildResult:
         if planner.route_strategy == "full_context":
             context_response = await self._context_loader.load_context(
                 QueryContextRequest(
@@ -205,9 +234,9 @@ class AgentService:
             log_json_artifact(
                 logger, "context_output.json", context_response.model_dump()
             )
-            return (
-                context_response.context_text,
-                self._evidence_from_context(
+            return ContextBuildResult(
+                context_text=context_response.context_text,
+                evidence=self._evidence_from_context(
                     context_response.context_text,
                     (
                         planner.full_context_sections[0]
@@ -215,43 +244,166 @@ class AgentService:
                         else ""
                     ),
                 ),
-                False,
+                selected_sections=list(planner.full_context_sections),
+                reranked=False,
+                retried=False,
+                final_query=planner.optimized_query,
+                retry_reason=None,
             )
 
+        current_query = planner.optimized_query
+        current_sections = list(planner.vector_search_sections)
         vector_response = await self._vector_query.query(
-            VectorQueryRequest(
-                processed_file_path=request.processed_file_path,
+            self._vector_query_request(
+                request=request,
                 collection_name=collection_name,
-                query=planner.optimized_query,
-                top_k=request.top_k,
-                filters=self._vector_filters(planner),
+                query=current_query,
+                sections=current_sections,
             ),
             logger=logger,
         )
         if vector_response.status != "success":
             raise ValueError(vector_response.error or "Vector retrieval failed")
 
-        log_json_artifact(logger, "retrieval_output.json", vector_response.model_dump())
-        results = vector_response.results
-        reranked = False
-        if request.rerank:
-            results, reranked = self._reranker.rerank(
-                request=request,
-                planner=planner,
-                results=results,
-                logger=logger,
-            )
+        self._log_retrieval_artifact(
+            logger=logger,
+            artifact_name="initial_retrieval_output.json",
+            query=current_query,
+            sections=current_sections,
+            response=vector_response.model_dump(),
+        )
+        rerank_result = self._reranker.rerank(
+            request=request,
+            planner=planner,
+            results=vector_response.results,
+            logger=logger,
+        )
+        logger.info(
+            "Initial retrieval judged %s",
+            "weak" if rerank_result.retry_recommended else "strong",
+        )
+        if not rerank_result.retry_recommended:
+            logger.info("Retry skipped because the first retrieval looked strong")
 
-        return (
-            self._context_from_results(results),
-            self._evidence_from_results(results),
-            reranked,
+        final_results = rerank_result.results
+        reranked = rerank_result.reranked
+        retried = False
+        retry_reason = None
+        final_query = current_query
+        final_sections = current_sections
+        final_response_dump = vector_response.model_dump()
+
+        if rerank_result.retry_recommended:
+            logger.info(
+                "Retry triggered after weak retrieval: %s",
+                rerank_result.retry_reason or "no reason provided",
+            )
+            try:
+                repair_output = self._repair.repair(
+                    question=request.question,
+                    planner=planner,
+                    current_query=current_query,
+                    current_sections=current_sections,
+                    results=vector_response.results,
+                    logger=logger,
+                )
+                logger.info("Repaired query: %s", repair_output.repaired_query)
+                if repair_output.selected_sections != current_sections:
+                    logger.info(
+                        "Retry section filter changed from %s to %s",
+                        current_sections or ["all"],
+                        repair_output.selected_sections or ["all"],
+                    )
+
+                retry_response = await self._vector_query.query(
+                    self._vector_query_request(
+                        request=request,
+                        collection_name=collection_name,
+                        query=repair_output.repaired_query,
+                        sections=repair_output.selected_sections,
+                    ),
+                    logger=logger,
+                )
+                if retry_response.status != "success":
+                    raise ValueError(retry_response.error or "Retry retrieval failed")
+
+                retry_rerank = self._reranker.rerank(
+                    request=request,
+                    planner=planner,
+                    results=retry_response.results,
+                    logger=logger,
+                    artifact_prefix="retry_",
+                )
+                final_results = retry_rerank.results
+                reranked = retry_rerank.reranked
+                retried = True
+                retry_reason = repair_output.reason or rerank_result.retry_reason
+                final_query = repair_output.repaired_query
+                final_sections = list(repair_output.selected_sections)
+                final_response_dump = retry_response.model_dump()
+            except Exception as exc:
+                logger.warning(
+                    "Retry failed, continuing with initial retrieval: %s", exc
+                )
+
+        self._log_retrieval_artifact(
+            logger=logger,
+            artifact_name="final_retrieval_output.json",
+            query=final_query,
+            sections=final_sections,
+            response=final_response_dump,
         )
 
-    def _vector_filters(self, planner: QueryPlanResponse) -> VectorQueryFilters | None:
-        if not planner.vector_search_sections:
+        return ContextBuildResult(
+            context_text=self._context_from_results(final_results),
+            evidence=self._evidence_from_results(final_results),
+            selected_sections=final_sections,
+            reranked=reranked,
+            retried=retried,
+            final_query=final_query,
+            retry_reason=retry_reason,
+        )
+
+    def _vector_query_request(
+        self,
+        *,
+        request: AgentAskRequest,
+        collection_name: str,
+        query: str,
+        sections: List[str],
+    ) -> VectorQueryRequest:
+        filters = self._vector_filters(sections)
+        return VectorQueryRequest(
+            processed_file_path=request.processed_file_path,
+            collection_name=collection_name,
+            query=query,
+            top_k=request.top_k,
+            filters=filters,
+        )
+
+    def _vector_filters(self, sections: List[str]) -> VectorQueryFilters | None:
+        if not sections:
             return None
-        return VectorQueryFilters(sections=planner.vector_search_sections)
+        return VectorQueryFilters(sections=sections)
+
+    def _log_retrieval_artifact(
+        self,
+        *,
+        logger: logging.Logger,
+        artifact_name: str,
+        query: str,
+        sections: List[str],
+        response: Dict[str, Any],
+    ) -> None:
+        log_json_artifact(
+            logger,
+            artifact_name,
+            {
+                "query": query,
+                "selected_sections": sections,
+                "response": response,
+            },
+        )
 
     def _call_answer_model(self, prompt: str) -> AnswerOutput:
         client = get_gemini_client()

@@ -4,7 +4,7 @@ from textwrap import dedent
 from typing import Sequence
 
 from ...schemas.query import QueryPlanResponse
-from ...schemas.vector import VectorQueryResult
+from ...schemas.vector import SectionLabel, VectorQueryResult
 
 
 def build_query_planner_prompt(
@@ -113,6 +113,69 @@ def build_reranker_prompt(
 
         Candidates:
         {"\n\n".join(candidates)}
+        """
+    ).strip()
+
+
+def build_retrieval_repair_prompt(
+    *,
+    question: str,
+    planner: QueryPlanResponse,
+    current_query: str,
+    current_sections: Sequence[SectionLabel],
+    results: Sequence[VectorQueryResult],
+) -> str:
+    current_sections_label = (
+        ", ".join(current_sections) if current_sections else "all sections"
+    )
+    candidates: list[str] = []
+    for index, result in enumerate(results, start=1):
+        candidates.append(
+            dedent(
+                f"""
+                Candidate {index}
+                Page: {result.page_number}
+                Section: {result.section}
+                Has table: {result.has_table}
+                Score: {result.score}
+                Text excerpt:
+                {result.text_for_embedding}
+                """
+            ).strip()
+        )
+
+    return dedent(
+        f"""
+        You are repairing a weak retrieval query for an annual-report RAG system.
+
+        Report context:
+        - Company: {planner.company_name}
+        - Year: {planner.year}
+        - Document: annual report
+
+        Original user question:
+        {question}
+
+        Current optimized retrieval query:
+        {current_query}
+
+        Current selected sections:
+        {current_sections_label}
+
+        The first retrieval pass looked weak. Your task is to produce a better retrieval query while preserving the user's original intent.
+
+        Instructions:
+        - Rewrite the retrieval query so it is clearer and more likely to retrieve the right pages.
+        - Keep the original intent. Do not add facts or change what the user is asking.
+        - Keep the current section filter if it still seems appropriate.
+        - Broaden the section filter only if the first retrieval likely failed because it was too narrow.
+        - To search all sections, return selected_sections=[].
+        - Use only these section labels when selecting sections:
+          company_overview, mda, auditor_report, balance_sheet, income_statement, equitychange_statement, cashflow_statement, notes, other
+        - Give a short reason for the repair.
+
+        Weak retrieval candidates:
+        {"\n\n".join(candidates) if candidates else "No candidates were returned."}
         """
     ).strip()
 

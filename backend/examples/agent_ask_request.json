@@ -2,6 +2,5 @@
   "session_id": "demo-session-001",
   "processed_file_path": "backend/storage/pipelines/99SMART-Annual-Report-2024/processed_99SMART-Annual-Report-2024.json",
   "question": "What was the total revenue in 2024?",
-  "top_k": 8,
-  "rerank": false
+  "top_k": 8
 }
