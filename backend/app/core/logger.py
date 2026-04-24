@@ -78,6 +78,6 @@ def _artifact_path(logger: logging.Logger, relative_path: str) -> Path:
 
 
 def _run_directory(logs_dir: Path, endpoint_name: str) -> Path:
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_endpoint = endpoint_name.strip("/").replace("/", "_").replace("-", "_")
     return logs_dir / safe_endpoint / timestamp
