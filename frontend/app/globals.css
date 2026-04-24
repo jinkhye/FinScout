@@ -20,7 +20,7 @@
 html,
 body {
   margin: 0;
-  min-height: 100%;
+  height: 100%;
   background: var(--bg);
   color: var(--text);
   font-family: Inter, "Segoe UI", Arial, sans-serif;
@@ -28,6 +28,7 @@ body {
 
 body {
   min-height: 100vh;
+  overflow: hidden;
 }
 
 button,
@@ -43,18 +44,21 @@ button {
 .appShell {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(380px, 0.85fr);
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .workspace,
 .viewerColumn {
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .workspace {
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--border);
+  border-left: 1px solid var(--border);
 }
 
 .topBar {
@@ -120,6 +124,7 @@ button {
   flex: 1;
   min-height: 0;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .messageStream {
@@ -189,6 +194,22 @@ button {
 .debugSection h3 {
   margin: 0 0 12px;
   font-size: 0.95rem;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sectionHeader h3 {
+  margin: 0;
+}
+
+.sectionToggle {
+  padding: 8px 12px;
 }
 
 .citationList {
@@ -342,6 +363,7 @@ button {
   min-height: 0;
   flex: 1;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .viewerHeader,
@@ -386,11 +408,33 @@ button {
 .viewerCanvas > div,
 .viewerCanvas .react-pdf__Document {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
   justify-content: center;
 }
 
 .viewerCanvas .react-pdf__Page {
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+
+.viewerCanvas .react-pdf__Page__canvas {
+  max-width: 100%;
+  height: auto !important;
+  border-radius: 8px;
+}
+
+.pdfPageFrame {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 6px 0;
+}
+
+.pdfPageFrame.active .react-pdf__Page {
+  box-shadow:
+    0 0 0 1px rgba(84, 180, 255, 0.28),
+    0 18px 40px rgba(0, 0, 0, 0.35);
 }
 
 .viewerEmpty,
@@ -475,16 +519,25 @@ button {
 }
 
 @media (max-width: 1200px) {
+  body {
+    overflow: auto;
+  }
+
   .appShell {
     grid-template-columns: 1fr;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
   }
 
   .workspace {
-    border-right: 0;
+    border-left: 0;
+    overflow: visible;
   }
 
   .viewerColumn {
     border-top: 1px solid var(--border);
+    overflow: visible;
   }
 }
 
