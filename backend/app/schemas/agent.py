@@ -52,6 +52,7 @@ class AgentAskRequest(BaseModel):
 class AgentCitation(BaseModel):
     page_number: int
     section: str
+    excerpt: str = ""
 
 
 class AgentAskResponse(BaseModel):

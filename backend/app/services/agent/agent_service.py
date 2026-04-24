@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, List
 
 from google.genai import types
@@ -64,6 +65,7 @@ class AgentService:
     ) -> AgentAskResponse:
         try:
             logger.info("Agent ask request for %s", request.processed_file_path)
+            logger.info("User question: %s", request.question)
             planner = await self._planner.plan(
                 QueryPlanRequest(
                     processed_file_path=request.processed_file_path,
@@ -73,6 +75,7 @@ class AgentService:
             )
             if planner.status != "success":
                 raise ValueError(planner.error or "Query planner failed")
+            logger.info("Optimized query: %s", planner.optimized_query)
 
             context_text, evidence = await self._build_context(
                 request,
@@ -99,6 +102,7 @@ class AgentService:
                 errors=[],
             )
             log_json_artifact(logger, "answer_output.json", response.model_dump())
+            logger.info("Answer preview: %s", self._answer_preview(response.answer))
             logger.info("Agent answer completed successfully")
             return response
         except Exception as exc:
@@ -240,7 +244,7 @@ class AgentService:
         for result in results:
             parts.append(f"<!-- Page {result.page_number} | section={result.section} -->")
             parts.append("")
-            parts.append(result.text or result.text_for_embedding)
+            parts.append(result.text)
             parts.append("")
             parts.append("---")
             parts.append("")
@@ -248,22 +252,35 @@ class AgentService:
 
     def _evidence_from_results(self, results: List[VectorQueryResult]) -> List[Dict[str, Any]]:
         return [
-            {"page_number": result.page_number, "section": result.section}
+            {
+                "page_number": result.page_number,
+                "section": result.section,
+                "excerpt": self._citation_excerpt(result.text),
+            }
             for result in results
             if result.page_number is not None
         ]
 
     def _evidence_from_context(self, context_text: str, section: str) -> List[Dict[str, Any]]:
         evidence: List[Dict[str, Any]] = []
-        for line in context_text.splitlines():
-            if not line.startswith("<!-- Page "):
+        parts = [part.strip() for part in context_text.split("\n---\n") if part.strip()]
+        for part in parts:
+            lines = part.splitlines()
+            if not lines or not lines[0].startswith("<!-- Page "):
                 continue
-            page_part = line.removeprefix("<!-- Page ").split("|", 1)[0].strip()
+            page_part = lines[0].removeprefix("<!-- Page ").split("|", 1)[0].strip()
             try:
                 page_number = int(page_part)
             except ValueError:
                 continue
-            evidence.append({"page_number": page_number, "section": section})
+            body = "\n".join(lines[1:]).strip()
+            evidence.append(
+                {
+                    "page_number": page_number,
+                    "section": section,
+                    "excerpt": self._citation_excerpt(body),
+                }
+            )
         return evidence
 
     def _normalize_citations(
@@ -272,14 +289,24 @@ class AgentService:
         evidence: List[Dict[str, Any]],
     ) -> List[AgentCitation]:
         evidence_by_page = {
-            int(item["page_number"]): str(item["section"])
+            int(item["page_number"]): {
+                "section": str(item["section"]),
+                "excerpt": str(item.get("excerpt") or ""),
+            }
             for item in evidence
             if item.get("page_number") is not None
         }
         normalized: List[AgentCitation] = []
         for citation in citations:
-            section = evidence_by_page.get(citation.page_number, citation.section)
-            item = AgentCitation(page_number=citation.page_number, section=section)
+            metadata = evidence_by_page.get(
+                citation.page_number,
+                {"section": citation.section, "excerpt": ""},
+            )
+            item = AgentCitation(
+                page_number=citation.page_number,
+                section=str(metadata["section"]),
+                excerpt=str(metadata["excerpt"]),
+            )
             if item not in normalized:
                 normalized.append(item)
 
@@ -287,8 +314,12 @@ class AgentService:
             return normalized
 
         return [
-            AgentCitation(page_number=page_number, section=section)
-            for page_number, section in evidence_by_page.items()
+            AgentCitation(
+                page_number=page_number,
+                section=str(metadata["section"]),
+                excerpt=str(metadata["excerpt"]),
+            )
+            for page_number, metadata in evidence_by_page.items()
         ]
 
     def _error_response(
@@ -315,3 +346,21 @@ class AgentService:
             error=error,
             errors=[error],
         )
+
+    def _answer_preview(self, answer: str, limit: int = 240) -> str:
+        preview = " ".join(answer.split())
+        if len(preview) <= limit:
+            return preview
+        return preview[: limit - 3].rstrip() + "..."
+
+    def _citation_excerpt(self, text: str, limit: int = 280) -> str:
+        excerpt = str(text)
+        excerpt = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", excerpt)
+        excerpt = re.sub(r"<!--.*?-->", " ", excerpt, flags=re.DOTALL)
+        excerpt = re.sub(r"<[^>]+>", " ", excerpt)
+        excerpt = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", excerpt)
+        excerpt = re.sub(r"(\*\*|__|\*|_|~~)", "", excerpt)
+        excerpt = re.sub(r"\s+", " ", excerpt).strip()
+        if len(excerpt) <= limit:
+            return excerpt
+        return excerpt[: limit - 3].rstrip() + "..."
