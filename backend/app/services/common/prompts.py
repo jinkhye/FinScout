@@ -61,13 +61,14 @@ def build_reranker_prompt(
 ) -> str:
     candidates: list[str] = []
     for index, result in enumerate(results, start=1):
-        excerpt = (result.text or result.text_for_embedding)[:1600]
+        excerpt = result.text_for_embedding
         candidates.append(
             dedent(
                 f"""
                 Candidate {index}
                 Page: {result.page_number}
                 Section: {result.section}
+                Has table: {result.has_table}
                 Score: {result.score}
                 Text excerpt:
                 {excerpt}
@@ -77,15 +78,22 @@ def build_reranker_prompt(
 
     return dedent(
         f"""
-        Rerank annual-report evidence pages for answering the user question.
+        You are a relevance judge for an annual-report RAG system.
 
         Company: {planner.company_name}
         Year: {planner.year}
         Original question: {question}
-        Optimized query: {planner.optimized_query}
+        Optimized retrieval query: {planner.optimized_query}
 
-        Select the best 3 to 5 pages. Prefer pages that directly contain the answer.
-        Return JSON only.
+        Your task is to select the best 3 to 5 candidates that directly answer the question.
+
+        Ranking criteria:
+        1. Direct relevance — does this page directly contain the answer?
+        2. Specificity — does it contain concrete financial figures, names, or facts rather than vague narrative?
+        3. Recency — if multiple years are present, prefer the most recent data unless the question asks for historical comparison.
+
+        Penalize pages that are only tangentially related or contain no specific answer to the question.
+        If a candidate has tables, its text excerpt already includes the table content summarized into plain language.
 
         Candidates:
         {"\n\n".join(candidates)}
@@ -111,15 +119,14 @@ def build_answer_prompt(
         User question:
         {question}
 
-        Optimized query:
-        {planner.optimized_query}
-
         Instructions:
-        - Answer only using the supplied context.
-        - If the context does not contain enough information, say so.
-        - Cite supporting page numbers in the citations field.
-        - Keep the answer concise but include exact figures when available.
-        - Do not mention retrieval internals.
+        - Answer only using the supplied context. Do not use prior knowledge.
+        - If the context does not contain enough information to answer, say so explicitly.
+        - Always include exact figures, percentages, and currencies when available.
+        - If financial tables are in RM'000, convert figures to their true value in your answer (e.g. 100,000 in RM'000 = RM100,000,000).
+        - Cite the page numbers that support your answer in the citations field.
+        - Do not mention retrieval internals, vector search, or reranking.
+        - Do not speculate beyond what the context states.
 
         Supplied context:
         {context_text}
