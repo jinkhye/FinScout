@@ -45,15 +45,19 @@ def build_query_planner_prompt(
         1. Decide whether this turn is a report_question or a direct_reply.
         2. Use direct_reply for greetings, acknowledgements, casual chit-chat, or conversational turns that do not need annual-report retrieval.
         3. Use report_question for turns that need annual-report evidence.
-        4. Correct typos and rewrite the user query as a clear retrieval query.
-        5. Preserve the original financial intent. Do not add new facts.
-        6. If intent=report_question, decide whether the query should search all sections or specific sections.
-        7. If intent=report_question and the query is broad, unclear, or spans the whole annual report, return selected_sections=[].
-        8. If intent=report_question and the query clearly maps to one or more section labels, return only those labels in selected_sections.
-        9. If intent=direct_reply, return selected_sections=[].
-        10. Use only the available section labels. Do not invent labels.
-        11. Use the conversation context only to resolve references such as "that", "the same company", or "what about last year".
-        12. Do not let conversation context override the current report metadata.
+        4. If intent=report_question, decide whether this is a single-step or multi-step retrieval problem.
+        5. Set is_multi_step=true only when the user is asking for multiple distinct pieces of evidence, different report sections, or a compare/explain combination that should be retrieved separately.
+        6. If intent=report_question, return the smallest useful list of sub_queries.
+        7. Each sub_query must include:
+           - query: a clear rewritten retrieval query for that step
+           - selected_sections: the section labels for that step, or [] to search all sections
+           - goal: a short description of what that step is trying to find
+        8. Preserve the original financial intent. Do not add new facts.
+        9. Do not split simple rephrasings or closely related facts that can be answered from one section.
+        10. If intent=direct_reply, return is_multi_step=false and sub_queries=[].
+        11. Use only the available section labels. Do not invent labels.
+        12. Use the conversation context only to resolve references such as "that", "the same company", or "what about last year".
+        13. Do not let conversation context override the current report metadata.
 
         Section guidance:
         - company_overview: corporate profile, milestones, directors, business overview, outlets, strategy

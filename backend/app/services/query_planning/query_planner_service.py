@@ -14,6 +14,7 @@ from ...schemas.query import (
     QueryPlanRequest,
     QueryPlanResponse,
     QueryPlannerModelOutput,
+    QueryPlannerSubQuery,
 )
 from ...schemas.vector import SectionLabel
 from ..common.gemini import get_gemini_client
@@ -84,28 +85,55 @@ class QueryPlannerService:
 
         model_output = self._call_planner_model(client, prompt)
         normalized_output = self._normalize_model_output(model_output)
-        route_strategy, vector_sections, full_context_sections = self._route_sections(
+        sub_queries = self._build_sub_queries(
             normalized_output.intent,
-            normalized_output.selected_sections,
+            normalized_output.sub_queries,
+            request.query,
         )
+        is_multi_step = len(sub_queries) > 1
+        primary_sub_query = sub_queries[0] if sub_queries else None
 
         response = QueryPlanResponse(
             original_query=request.query,
             intent=normalized_output.intent,
-            optimized_query=normalized_output.optimized_query,
+            is_multi_step=is_multi_step,
+            sub_queries=sub_queries,
+            optimized_query=(
+                primary_sub_query.query
+                if primary_sub_query is not None
+                else request.query.strip()
+            ),
             company_name=company_name,
             year=year,
-            selected_sections=normalized_output.selected_sections,
-            route_strategy=route_strategy,
-            vector_search_sections=vector_sections,
-            full_context_sections=full_context_sections,
+            selected_sections=(
+                list(primary_sub_query.selected_sections)
+                if primary_sub_query is not None
+                else []
+            ),
+            route_strategy=(
+                primary_sub_query.route_strategy
+                if primary_sub_query is not None
+                else None
+            ),
+            vector_search_sections=(
+                list(primary_sub_query.vector_search_sections)
+                if primary_sub_query is not None
+                else []
+            ),
+            full_context_sections=(
+                list(primary_sub_query.full_context_sections)
+                if primary_sub_query is not None
+                else []
+            ),
             status="success",
             errors=[],
         )
         log_json_artifact(logger, "planner_output.json", response.model_dump())
         logger.info(
-            "Query plan completed with intent=%s route_strategy=%s sections=%s",
+            "Query plan completed with intent=%s is_multi_step=%s sub_queries=%d primary_route=%s sections=%s",
             response.intent,
+            response.is_multi_step,
+            len(response.sub_queries),
             response.route_strategy,
             response.selected_sections,
         )
@@ -169,24 +197,75 @@ class QueryPlannerService:
         self,
         model_output: QueryPlannerModelOutput,
     ) -> QueryPlannerModelOutput:
-        sections: List[SectionLabel] = []
-        for section in model_output.selected_sections:
-            if section in SUPPORTED_SECTIONS and section not in sections:
-                sections.append(section)
-
         return QueryPlannerModelOutput(
             intent=model_output.intent,
-            optimized_query=model_output.optimized_query.strip(),
-            selected_sections=[] if model_output.intent == "direct_reply" else sections,
+            is_multi_step=bool(
+                model_output.is_multi_step
+                and model_output.intent == "report_question"
+            ),
+            sub_queries=(
+                []
+                if model_output.intent == "direct_reply"
+                else list(model_output.sub_queries)
+            ),
         )
+
+    def _build_sub_queries(
+        self,
+        intent: str,
+        model_sub_queries: List[QueryPlannerModelOutput.SubQuery],
+        original_query: str,
+    ) -> List[QueryPlannerSubQuery]:
+        if intent == "direct_reply":
+            return []
+
+        normalized_sub_queries: List[QueryPlannerSubQuery] = []
+        raw_sub_queries = model_sub_queries or [
+            QueryPlannerModelOutput.SubQuery(
+                query=original_query.strip(),
+                selected_sections=[],
+                goal="Answer the user's question.",
+            )
+        ]
+        for sub_query in raw_sub_queries:
+            query = sub_query.query.strip()
+            if not query:
+                continue
+
+            selected_sections: List[SectionLabel] = []
+            for section in sub_query.selected_sections:
+                if section in SUPPORTED_SECTIONS and section not in selected_sections:
+                    selected_sections.append(section)
+
+            route_strategy, vector_sections, full_context_sections = self._route_sections(
+                selected_sections
+            )
+            normalized_sub_queries.append(
+                QueryPlannerSubQuery(
+                    query=query,
+                    selected_sections=selected_sections,
+                    route_strategy=route_strategy,
+                    vector_search_sections=vector_sections,
+                    full_context_sections=full_context_sections,
+                    goal=sub_query.goal.strip(),
+                )
+            )
+
+        return normalized_sub_queries or [
+            QueryPlannerSubQuery(
+                query=original_query.strip(),
+                selected_sections=[],
+                route_strategy="vector_search",
+                vector_search_sections=[],
+                full_context_sections=[],
+                goal="Answer the user's question.",
+            )
+        ]
 
     def _route_sections(
         self,
-        intent: str,
         selected_sections: List[SectionLabel],
-    ) -> tuple[str | None, List[SectionLabel], List[SectionLabel]]:
-        if intent == "direct_reply":
-            return None, [], []
+    ) -> tuple[str, List[SectionLabel], List[SectionLabel]]:
         if not selected_sections:
             return "vector_search", [], []
 
@@ -211,6 +290,8 @@ class QueryPlannerService:
             {
                 "original_query": request.query,
                 "intent": "report_question",
+                "is_multi_step": False,
+                "sub_queries": [],
                 "optimized_query": "",
                 "status": "error",
                 "error": error,

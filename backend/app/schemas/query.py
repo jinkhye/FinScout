@@ -44,14 +44,30 @@ class QueryPlanRequest(BaseModel):
 
 
 class QueryPlannerModelOutput(BaseModel):
+    class SubQuery(BaseModel):
+        query: str = Field(...)
+        selected_sections: List[SectionLabel] = Field(default_factory=list)
+        goal: str = ""
+
     intent: QueryIntent = "report_question"
-    optimized_query: str = Field(...)
+    is_multi_step: bool = False
+    sub_queries: List[SubQuery] = Field(default_factory=list)
+
+
+class QueryPlannerSubQuery(BaseModel):
+    query: str = ""
     selected_sections: List[SectionLabel] = Field(default_factory=list)
+    route_strategy: RouteStrategy | None = None
+    vector_search_sections: List[SectionLabel] = Field(default_factory=list)
+    full_context_sections: List[SectionLabel] = Field(default_factory=list)
+    goal: str = ""
 
 
 class QueryPlanResponse(BaseModel):
     original_query: str = ""
     intent: QueryIntent = "report_question"
+    is_multi_step: bool = False
+    sub_queries: List[QueryPlannerSubQuery] = Field(default_factory=list)
     optimized_query: str = ""
     company_name: str = "unknown"
     year: str = "unknown"
