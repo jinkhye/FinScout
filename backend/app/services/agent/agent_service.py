@@ -77,7 +77,7 @@ class AgentService:
                 raise ValueError(planner.error or "Query planner failed")
             logger.info("Optimized query: %s", planner.optimized_query)
 
-            context_text, evidence = await self._build_context(
+            context_text, evidence, reranked = await self._build_context(
                 request,
                 planner,
                 logger,
@@ -96,6 +96,7 @@ class AgentService:
                 company_name=planner.company_name,
                 year=planner.year,
                 route_strategy=planner.route_strategy,
+                reranked=reranked,
                 citations=self._normalize_citations(answer_output.citations, evidence),
                 planner=planner,
                 status="success",
@@ -114,7 +115,7 @@ class AgentService:
         request: AgentAskRequest,
         planner: QueryPlanResponse,
         logger: logging.Logger,
-    ) -> tuple[str, List[Dict[str, Any]]]:
+    ) -> tuple[str, List[Dict[str, Any]], bool]:
         if planner.route_strategy == "full_context":
             context_response = await self._context_loader.load_context(
                 QueryContextRequest(
@@ -130,7 +131,7 @@ class AgentService:
             return context_response.context_text, self._evidence_from_context(
                 context_response.context_text,
                 planner.full_context_sections[0] if planner.full_context_sections else "",
-            )
+            ), False
 
         collection_name = resolve_collection_name(
             self._settings,
@@ -152,13 +153,14 @@ class AgentService:
 
         log_json_artifact(logger, "retrieval_output.json", vector_response.model_dump())
         results = vector_response.results
+        reranked = False
         if request.rerank:
-            results = self._rerank_results(request, planner, results, logger)
+            results, reranked = self._rerank_results(request, planner, results, logger)
 
-        return self._context_from_results(results), self._evidence_from_results(results)
+        return self._context_from_results(results), self._evidence_from_results(results), reranked
 
     def _vector_filters(self, planner: QueryPlanResponse) -> VectorQueryFilters | None:
-        if planner.no_filter or not planner.vector_search_sections:
+        if not planner.vector_search_sections:
             return None
         return VectorQueryFilters(sections=planner.vector_search_sections)
 
@@ -168,11 +170,12 @@ class AgentService:
         planner: QueryPlanResponse,
         results: List[VectorQueryResult],
         logger: logging.Logger,
-    ) -> List[VectorQueryResult]:
+    ) -> tuple[List[VectorQueryResult], bool]:
         if not results:
-            return results
+            return results, False
 
         try:
+            logger.info("Reranker started with %d candidates", len(results))
             prompt = build_reranker_prompt(
                 question=request.question,
                 planner=planner,
@@ -189,7 +192,11 @@ class AgentService:
                 if result is not None and result not in reranked:
                     reranked.append(result)
 
-            return reranked or results[:5]
+            selected_pages = [result.page_number for result in reranked]
+            logger.info("Reranker selected pages: %s", selected_pages)
+            if reranked:
+                return reranked, True
+            return results[:5], False
         except Exception as exc:
             logger.warning("Reranker failed, falling back to vector order: %s", exc)
             log_json_artifact(
@@ -201,7 +208,7 @@ class AgentService:
                     "fallback": "vector_order",
                 },
             )
-            return results
+            return results, False
 
     def _call_reranker_model(self, prompt: str) -> RerankerOutput:
         client = get_gemini_client()

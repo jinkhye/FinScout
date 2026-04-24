@@ -43,7 +43,6 @@ class QueryPlanRequest(BaseModel):
 
 class QueryPlannerModelOutput(BaseModel):
     optimized_query: str = Field(...)
-    no_filter: bool = Field(default=False)
     selected_sections: List[SectionLabel] = Field(default_factory=list)
 
 
@@ -52,7 +51,6 @@ class QueryPlanResponse(BaseModel):
     optimized_query: str = ""
     company_name: str = "unknown"
     year: str = "unknown"
-    no_filter: bool = False
     selected_sections: List[SectionLabel] = Field(default_factory=list)
     route_strategy: RouteStrategy = "vector_search"
     vector_search_sections: List[SectionLabel] = Field(default_factory=list)

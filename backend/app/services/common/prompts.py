@@ -34,10 +34,9 @@ def build_query_planner_prompt(
         1. Correct typos and rewrite the user query as a clear retrieval query.
         2. Preserve the original financial intent. Do not add new facts.
         3. Decide whether the query should search all sections or specific sections.
-        4. If the query is broad, unclear, or spans the whole annual report, set no_filter=true and selected_sections=[].
-        5. If the query clearly maps to one or more section labels, set no_filter=false and selected_sections to those labels only.
+        4. If the query is broad, unclear, or spans the whole annual report, return selected_sections=[].
+        5. If the query clearly maps to one or more section labels, return only those labels in selected_sections.
         6. Use only the available section labels. Do not invent labels.
-        7. If selected_sections contains only financial statement sections (balance_sheet, income_statement, equitychange_statement, cashflow_statement), set direct_load=true. Otherwise set direct_load=false.
 
         Section guidance:
         - company_overview: corporate profile, milestones, directors, business overview, outlets, strategy

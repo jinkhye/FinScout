@@ -84,7 +84,6 @@ class QueryPlannerService:
         model_output = self._call_planner_model(client, prompt)
         normalized_output = self._normalize_model_output(model_output)
         route_strategy, vector_sections, full_context_sections = self._route_sections(
-            normalized_output.no_filter,
             normalized_output.selected_sections,
         )
 
@@ -93,7 +92,6 @@ class QueryPlannerService:
             optimized_query=normalized_output.optimized_query,
             company_name=company_name,
             year=year,
-            no_filter=normalized_output.no_filter,
             selected_sections=normalized_output.selected_sections,
             route_strategy=route_strategy,
             vector_search_sections=vector_sections,
@@ -172,19 +170,16 @@ class QueryPlannerService:
             if section in SUPPORTED_SECTIONS and section not in sections:
                 sections.append(section)
 
-        no_filter = bool(model_output.no_filter) or not sections
         return QueryPlannerModelOutput(
             optimized_query=model_output.optimized_query.strip(),
-            no_filter=no_filter,
-            selected_sections=[] if no_filter else sections,
+            selected_sections=sections,
         )
 
     def _route_sections(
         self,
-        no_filter: bool,
         selected_sections: List[SectionLabel],
     ) -> tuple[str, List[SectionLabel], List[SectionLabel]]:
-        if no_filter:
+        if not selected_sections:
             return "vector_search", [], []
 
         if (

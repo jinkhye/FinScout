@@ -61,6 +61,7 @@ class AgentAskResponse(BaseModel):
     company_name: str = "unknown"
     year: str = "unknown"
     route_strategy: RouteStrategy = "vector_search"
+    reranked: bool = False
     citations: List[AgentCitation] = Field(default_factory=list)
     planner: QueryPlanResponse | None = None
     status: AgentAskStatus = "error"
