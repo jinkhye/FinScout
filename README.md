@@ -97,6 +97,21 @@ Important supporting routes:
 
 ## Local setup
 
+## Docker Compose
+
+From repo root, make sure `.env` contains your API keys, then run:
+
+```powershell
+docker compose up --build
+```
+
+Compose starts:
+- Qdrant at `http://localhost:6333`
+- backend API at `http://localhost:8000`
+- frontend app at `http://localhost:3000`
+
+The backend uses `QDRANT_URL=http://qdrant:6333` inside Docker, while local non-Docker runs still default to `http://localhost:6333`.
+
 ## 1. Backend
 
 From repo root:

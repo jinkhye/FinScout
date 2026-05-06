@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -42,6 +43,7 @@ def get_settings() -> Settings:
     repository_root = Path(__file__).resolve().parents[3]
     backend_root = repository_root / "backend"
     load_dotenv(repository_root / ".env")
+    frontend_origins = os.getenv("FRONTEND_ORIGINS")
 
     return Settings(
         repository_root=repository_root,
@@ -50,4 +52,10 @@ def get_settings() -> Settings:
         pipeline_dir=backend_root / "storage" / "pipelines",
         logs_dir=backend_root / "logs",
         conversations_db_path=backend_root / "storage" / "conversations.sqlite3",
+        qdrant_url=os.getenv("QDRANT_URL", Settings.qdrant_url),
+        frontend_origins=(
+            tuple(origin.strip() for origin in frontend_origins.split(",") if origin.strip())
+            if frontend_origins
+            else Settings.frontend_origins
+        ),
     )
